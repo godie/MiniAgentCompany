@@ -1,0 +1,32 @@
+spring:
+  threads:
+    virtual:
+      enabled: true
+  ai:
+    OpenAI:
+      enable: false
+
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: gpt-mini
+          temperature: 0.7
+    ollama:
+      init:
+        timeout: 60s
+        max-retires: 2
+      api-key: ollama-local
+      chat:
+        options:
+          model: qwen3.5:4b
+          temperature: 0.7
+
+    #chat:
+      #client:
+       # enabled: false
+
+pipeline:
+  convergence-threshold: 75
+  max-loops: 3
+  default-debate-rounds: 2
+  poker-consensus-max-distance: 1

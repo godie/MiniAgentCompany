@@ -1,0 +1,54 @@
+✓ loaded snapshot  38 files  ⚡ 0ns
+AGENTS.md  markdown  273L  0 sym
+CONTEX.md  markdown  123L  0 sym
+META_PIPELINE.md  markdown  195L  0 sym
+engineer-lead.prompt.md  markdown  382L  0 sym
+idea.md  markdown  41L  0 sym
+pom.xml  unknown  119L  0 sym
+src/
+  main/
+    java/
+      com/
+        ideapipeline/
+          Application.java  unknown  19L  0 sym
+          client/
+            LlmClient.java  unknown  27L  0 sym
+            LlmClientImpl.java  unknown  27L  0 sym
+          config/
+            PipelineConfig.java  unknown  21L  0 sym
+            PipelineProperties.java  unknown  20L  0 sym
+          controller/
+            PipelineController.java  unknown  65L  0 sym
+          exception/
+            PipelineException.java  unknown  25L  0 sym
+          model/
+            ArchitectureDoc.java  unknown  12L  0 sym
+            CritiqueResult.java  unknown  10L  0 sym
+            DebateMessage.java  unknown  8L  0 sym
+            EstimatedTask.java  unknown  12L  0 sym
+            IdeaContext.java  unknown  10L  0 sym
+            PipelineOutput.java  unknown  10L  0 sym
+            PipelineResult.java  unknown  10L  0 sym
+            PipelineState.java  unknown  11L  0 sym
+            RawIdea.java  unknown  4L  0 sym
+            RefinementQA.java  unknown  4L  0 sym
+            Task.java  unknown  10L  0 sym
+            Team.java  unknown  18L  0 sym
+            TeamMember.java  unknown  14L  0 sym
+            ValidationResult.java  unknown  8L  0 sym
+            enums/
+              BaseRole.java  unknown  5L  0 sym
+              Seniority.java  unknown  5L  0 sym
+          orchestrator/
+            CriticOrchestrator.java  unknown  22L  0 sym
+            DebateOrchestrator.java  unknown  28L  0 sym
+            GatekeeperOrchestrator.java  unknown  26L  0 sym
+            PlanningPokerOrchestrator.java  unknown  37L  0 sym
+            StackArchitectOrchestrator.java  unknown  23L  0 sym
+            SynthesisOrchestrator.java  unknown  21L  0 sym
+            ValidationOrchestrator.java  unknown  21L  0 sym
+          pipeline/
+            IdeaPipeline.java  unknown  126L  0 sym
+    resources/
+      application.yml  yaml  17L  0 sym
+⚡ 58.0µs
