@@ -1,7 +1,7 @@
 # idea.md
 
-**Versión:** 1.2
-**Última actualización:** 2026-04-10
+**Versión:** 1.3
+**Última actualización:** 2026-04-19
 **Basado en:** diseño convergido manualmente (score 91)
 
 
@@ -27,14 +27,14 @@ una idea de software antes de escribir una sola línea de código.
 - TaskGraph — tareas estimadas con dependencias y puntos
 
 ## Restricciones conocidas
-- Prueba de concepto manual primero, automatización después
-- Stack: Java 21 + Spring Boot 3.3 + Spring AI + virtual threads
+- Implementación secuencial (v1) — base funcional completa
+- Stack: Java 21 + Spring Boot 4.1 + Spring AI + JPA/H2
 - LLM provider inicial: OpenAI (gpt-4o-mini)
 - El sistema es recursivo: se usó a sí mismo para diseñarse
 
 ## Estado actual
-Pipeline de diseño completado manualmente:
-- Claude → Architect + Gatekeeper
-- DeepSeek → CriticAgent (Fase 3a)
-- ChatGPT → ValidationAgent (Fase 3b)
-- convergenceScore del diseño: 93 — FINAL
+Implementación completada — 124 tests passing, 0 failures.
+Todos los orchestrators, orquestador principal, CLI y REST API implementados.
+REST API expone: POST /questions, POST /run (async), GET /{id}/status, GET /{id}/result, GET /health.
+CLI expone: --idea, --team, --interactive, --refinements, --output.
+Siguiente paso: virtual threads v2, deploy.

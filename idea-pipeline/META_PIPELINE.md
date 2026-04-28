@@ -1,7 +1,7 @@
 # META_PIPELINE.md — Pipeline de Debate y Convergencia entre LLMs
 
-**Versión:** 1.2
-**Última actualización:** 2026-04-10
+**Versión:** 1.4
+**Última actualización:** 2026-04-19
 **Basado en:** diseño convergido manualmente (score 93) y Engineer Lead prompt v1.1
 
 ---
@@ -72,6 +72,20 @@ Este archivo es la **fuente de verdad** para el sistema multi‑agente. Define:
 - `Task(String id, String title, String description, String epicId, String userStory)`
 - `EstimatedTask(Task task, int storyPoints, Map<String, Integer> votes, List<String> dependencies)`
 - `TaskGraph(List<EstimatedTask> tasks, Map<String, List<String>> adjacency, int totalPoints, Map<String, Integer> pointsByRole)`
+
+### Job tracking domain
+- `PipelineJobStatus` enum: QUEUED, PROCESSING, DONE, ERROR
+- `PipelineJob` entity: id (UUID), status, createdAt, updatedAt, errorMessage, resultJson
+- `PipelineJobRepository` extends `JpaRepository<PipelineJob, String>`
+
+### REST API layer
+- `PipelineController` — `/pipeline` endpoints
+- `PipelineJobService` — async job execution with `@Async`
+- DTOs: `QuestionsRequest`, `QuestionsResponse`, `RunPipelineRequest`, `RunPipelineResponse`, `JobStatusResponse`, `JobResultResponse`
+
+### CLI layer
+- `PipelineRunner` — `ApplicationRunner` with `--idea`, `--team`, `--interactive`, `--refinements`, `--output` flags
+- `TaskParser` — static parser for task markdown documents
 
 ### Pipeline state & result
 - `PipelineState(IdeaContext context, List<DebateMessage> debateHistory, PipelineOutput output, int loopCount)`
@@ -169,7 +183,8 @@ OUTPUT_FORMAT:
 
 ## 10. Decisiones de diseño clave
 
-- **Virtual threads + StructuredTaskScope** sobre CompletableFuture: más limpio, manejo de fallos automático con `ShutdownOnFailure`.
+- **Implementación secuencial (v1)**: IdeaPipeline ejecuta fases en orden. Base funcional para la prueba de concepto.
+- **Virtual threads + StructuredTaskScope (pendiente — v2)**: más limpio, manejo de fallos automático con `ShutdownOnFailure`. No implementado en v1.
 - **Stack definido antes de Planning Poker**: evita estimaciones vagas.
 - **Dos firmas en `LlmClient`**: `chat()` para fases sin historial, `chatWithHistory()` para debate.
 - **Separación de Critique y Validation**: roles y modelos distintos (DeepSeek critica, ChatGPT valida).
@@ -178,13 +193,22 @@ OUTPUT_FORMAT:
 
 ---
 
-## 11. Próximos pasos (estado actual)
+## 11. Estado de implementación
 
-- ✅ `META_PIPELINE.md` (v1.2) — generado y corregido.
-- ✅ `idea.md` — generada y aprobada (score 96).
-- ✅ `CONTEXT.md` — generado (pendiente de aprobación final).
-- ✅ `AGENTS.md` — generado (pendiente de aprobación final).
-- ⏳ Engineer Lead prompt — listo para ejecutar con un code agent, una vez que `CONTEXT.md` y `AGENTS.md` estén aprobados.
+- ✅ `META_PIPELINE.md` (v1.4) — actualizado.
+- ✅ `idea.md` — aprobada (score 96).
+- ✅ `CONTEXT.md` (v1.3) — actualizado.
+- ✅ `AGENTS.md` (v1.2) — actualizado.
+- ✅ Todos los orchestrators — implementados, 85 tests passing.
+- ✅ `IdeaPipeline.java` — implementado, 96 tests passing.
+- ✅ `PipelineRunner` (CLI) — implementado, 106 tests total.
+- ✅ REST API — implementado, 124 tests total.
+  - `PipelineJob` entity + repository
+  - `PipelineJobService` (async execution)
+  - `PipelineController` (5 endpoints)
+  - DTOs (6 records)
+- ✅ `@EnableAsync` en `PipelineConfig`
+- ⏳ Virtual threads + StructuredTaskScope — pendiente (v2).
 
 ---
 

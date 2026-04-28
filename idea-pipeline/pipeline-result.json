@@ -1,0 +1,26 @@
+{
+  "context" : {
+    "rawIdea" : "test idea",
+    "refinements" : [ ],
+    "enrichedSummary" : "enriched summary"
+  },
+  "documents" : {
+    "contextDocument" : "context doc",
+    "flowDocument" : "flow doc",
+    "taskDocument" : "task doc"
+  },
+  "architecture" : {
+    "stack" : "Java 21",
+    "services" : [ "API" ],
+    "constraints" : [ "scale" ],
+    "deploymentModel" : "Docker",
+    "rationale" : "reasons"
+  },
+  "taskGraph" : {
+    "tasks" : [ ],
+    "adjacency" : { },
+    "totalPoints" : 0,
+    "pointsByRole" : { }
+  },
+  "loopsRequired" : 0
+}

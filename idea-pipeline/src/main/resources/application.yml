@@ -2,6 +2,15 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: jdbc:h2:mem:pipelinedb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
   ai:
     OpenAI:
       enable: false

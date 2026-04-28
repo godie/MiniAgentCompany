@@ -1,7 +1,7 @@
 # AGENTS.md — idea-pipeline
 
-**Versión:** 1.1
-**Última actualización:** 2026-04-10
+**Versión:** 1.2
+**Última actualización:** 2026-04-18
 **Basado en:** diseño convergido manualmente (score 95)
 
 ## Formato de cada agente
@@ -132,8 +132,9 @@ Prioriza por valor y dependencias. No genera tareas sin criterios de aceptación
 **Output**: JSON — `{"critiques": [], "gaps": [], "refinementNeeds": []}`
 **Paralelismo**: Solo
 **System prompt summary**: Auditor de producto y arquitectura. Evalúa calidad y consistencia
-de los documentos. No evalúa convergencia — solo identifica problemas.
-Distingue entre problemas bloqueantes y mejoras incrementales.
+de los documentos en contexto del debate que los produjo. No evalúa convergencia — solo
+identifica problemas. Distingue entre problemas bloqueantes y mejoras incrementales.
+El historial de debate se incluye en el mensaje al LLM para contextualizar las críticas.
 
 ---
 
