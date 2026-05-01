@@ -95,39 +95,50 @@ spring.ai.ollama.base-url=http://localhost:11434
 spring.ai.ollama.chat.options.model=llama3.2
 ```
 
-## Archivo `application.properties` ejemplo
+## Archivo `application.yml` ejemplo
 
-```properties
+```yaml
 # ============================================
 # OPENAI
 # ============================================
-spring.ai.openai.api-key=${OPENAI_API_KEY}
+spring:
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
 
 # ============================================
 # ANTHROPIC
 # ============================================
-spring.ai.anthropic.api-key=${ANTHROPIC_API_KEY}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
 
 # ============================================
 # DEEPSEEK
 # ============================================
-spring.ai.deepseek.api-key=${DEEPSEEK_API_KEY}
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY}
 
 # ============================================
 # MISTRAL AI
 # ============================================
-spring.ai.mistralai.api-key=${MISTRAL_AI_API_KEY}
+    mistralai:
+      api-key: ${MISTRAL_AI_API_KEY}
 
 # ============================================
 # GOOGLE GEMINI
 # ============================================
-spring.ai.google.genai.api-key=${GOOGLE_GENAI_API_KEY}
+    google:
+      genai:
+        api-key: ${GOOGLE_GENAI_API_KEY}
 
 # ============================================
 # OLLAMA (local)
 # ============================================
-spring.ai.ollama.base-url=http://localhost:11434
+    ollama:
+      base-url: http://localhost:11434
 ```
+
+> **Nota**: Las credenciales se leen de variables de entorno. Configura cada `API_KEY` en tu shell o en un archivo `.env` que cargues al iniciar.
 
 ## Selector de Provider en Código
 
