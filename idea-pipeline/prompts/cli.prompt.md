@@ -1,9 +1,9 @@
-# cli.prompt.md v1.0
+## Validaciones de entrada (capa CLI)
 
---idea blank: después de leer el flag, validar ideaText.isBlank() → exitWithError("Error: --idea cannot be empty")
-Directorio padre de --output: antes de escribir, llamar Files.createDirectories(Path.of(outputPath).getParent()) — ignorar si ya existe, exitWithError si falla
-team.members() vacío: en parseTeam(), después de deserializar, si team.members().isEmpty() → exitWithError("Error: team must have at least one member")
-Respuesta vacía en modo interactivo: aceptar vacío pero imprimir "Warning: empty answer for question {i}" a stderr — no bloquear
+- `--idea` vacío: validar con `ideaText.isBlank()` → `exitWithError("Error: --idea cannot be empty")`
+- Directorio padre de `--output`: llamar `Files.createDirectories()` antes de escribir — ignorar si ya existe, `exitWithError` si falla
+- `team.members()` vacío: en `parseTeam()`, después de deserializar → `exitWithError("Error: team must have at least one member")`
+- Respuesta vacía en interactivo: aceptar pero imprimir `"Warning: empty answer for question {i}"` a stderr — no bloquear
 
 ## Role
 You are a Senior Java Developer implementing the CLI entry point of the idea-pipeline system.
