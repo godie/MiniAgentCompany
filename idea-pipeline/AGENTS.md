@@ -1,215 +1,220 @@
 # AGENTS.md — idea-pipeline
 
-**Versión:** 1.1
-**Última actualización:** 2026-04-10
-**Basado en:** diseño convergido manualmente (score 95)
+**Version:** 1.3
+**Last updated:** 2026-05-25
+**Based on:** manually converged design (score 95)
 
-## Formato de cada agente
+## Current implementation
+**All agents use Ollama (qwen3.5:4b)** with different system prompts.
+The "Recommended model" entries indicate the ideal LLM per profile according to the original design;
+they are conceptual recommendations, not the configured provider.
+
+## Format of each agent
 
 ---
-### [Nombre]
-**Fase**: número y nombre
-**Rol**: una oración
-**Modelo recomendado**: LLM sugerido
-**Input**: qué recibe
-**Output**: qué produce y en qué formato
-**Paralelismo**: solo / paralelo con otros / secuencial
-**System prompt summary**: filosofía del prompt
+### [Name]
+**Phase**: number and name
+**Role**: one sentence
+**Recommended model**: suggested LLM (conceptual)
+**Input**: what it receives
+**Output**: what it produces and in which format
+**Parallelism**: solo / parallel with others / sequential
+**System prompt summary**: philosophy of the prompt
 ---
 
 ---
 
 ### GatekeeperAgent
-**Fase**: 0 — Refinement
-**Rol**: Transforma una idea cruda en contexto enriquecido haciendo las preguntas mínimas necesarias.
-**Modelo recomendado**: Claude
-**Input**: RawIdea (texto libre)
-**Output**: Lista de 5-7 preguntas en JSON — `{"questions": ["..."]}`
-**Paralelismo**: Solo
-**System prompt summary**: Product strategist experto en convertir ideas vagas en specs claras.
-Hace las preguntas mínimas y más importantes. Máximo 6 preguntas.
-Cada pregunta desambigua algo crítico. Responde solo en JSON.
+**Phase**: 0 — Refinement
+**Role**: Transforms a raw idea into enriched context by asking the minimum necessary questions.
+**Recommended model**: Claude
+**Input**: RawIdea (free text)
+**Output**: List of 5-7 questions in JSON — `{"questions": ["..."]}`
+**Parallelism**: Solo
+**System prompt summary**: Product strategist expert in turning vague ideas into clear specs.
+Asks the minimum and most important questions. Maximum 6 questions.
+Each question disambiguates something critical. Responds only in JSON.
 
 ---
 
 ### ContextEnricherAgent
-**Fase**: 0 — Context Building
-**Rol**: Genera el resumen ejecutivo enriquecido a partir de la idea y las respuestas del usuario.
-**Modelo recomendado**: Claude
+**Phase**: 0 — Context Building
+**Role**: Generates the enriched executive summary from the idea and the user's answers.
+**Recommended model**: Claude
 **Input**: RawIdea + List<RefinementQA>
-**Output**: String — resumen ejecutivo de máximo 200 palabras
-**Paralelismo**: Solo, secuencial después de GatekeeperAgent
-**System prompt summary**: Sintetiza idea original y respuestas de refinamiento en un resumen
-que captura esencia, problema, usuario objetivo y restricciones clave.
-Es el contexto base que todas las fases siguientes reciben.
+**Output**: String — executive summary of at most 200 words
+**Parallelism**: Solo, sequential after GatekeeperAgent
+**System prompt summary**: Synthesizes the original idea and the refinement answers into a summary
+that captures essence, problem, target user and key constraints.
+It is the base context that all subsequent phases receive.
 
 ---
 
 ### ProductAgent
-**Fase**: 1 — Debate
-**Rol**: Defiende la perspectiva de producto, usuario y valor de negocio.
-**Modelo recomendado**: Cualquier LLM capaz de mantener un rol
-**Input**: IdeaContext + snapshot del historial de debate
-**Output**: DebateMessage — máximo 3 oraciones por turno
-**Paralelismo**: Paralelo con ArchitectAgent y CriticAgent dentro de cada ronda
-**System prompt summary**: Product Manager senior enfocado en el usuario, mercado y experiencia.
-Pregunta sobre el para quién y el por qué. Referencia a los otros agentes por nombre.
-Conciso y concreto.
+**Phase**: 1 — Debate
+**Role**: Defends the product, user and business value perspective.
+**Recommended model**: Any LLM capable of holding a role
+**Input**: IdeaContext + snapshot of the debate history
+**Output**: DebateMessage — at most 3 sentences per turn
+**Parallelism**: Parallel with ArchitectAgent and CriticAgent within each round
+**System prompt summary**: Senior Product Manager focused on the user, market and experience.
+Asks about the who and the why. References the other agents by name.
+Concise and concrete.
 
 ---
 
 ### ArchitectAgent
-**Fase**: 1 — Debate
-**Rol**: Evalúa viabilidad técnica, stack, datos e integraciones.
-**Modelo recomendado**: Cualquier LLM con buen razonamiento técnico
-**Input**: IdeaContext + snapshot del historial de debate
-**Output**: DebateMessage — máximo 3 oraciones por turno
-**Paralelismo**: Paralelo con ProductAgent y CriticAgent dentro de cada ronda
-**System prompt summary**: Software Architect enfocado en viabilidad técnica y escalabilidad.
-Cuestiona complejidad innecesaria. Referencia a los otros agentes por nombre.
-Conciso y concreto.
+**Phase**: 1 — Debate
+**Role**: Evaluates technical feasibility, stack, data and integrations.
+**Recommended model**: Any LLM with good technical reasoning
+**Input**: IdeaContext + snapshot of the debate history
+**Output**: DebateMessage — at most 3 sentences per turn
+**Parallelism**: Parallel with ProductAgent and CriticAgent within each round
+**System prompt summary**: Software Architect focused on technical feasibility and scalability.
+Questions unnecessary complexity. References the other agents by name.
+Concise and concrete.
 
 ---
 
 ### CriticAgent (debate)
-**Fase**: 1 — Debate
-**Rol**: Devil's advocate — busca riesgos, suposiciones no validadas y problemas no evidentes.
-**Modelo recomendado**: DeepSeek
-**Input**: IdeaContext + snapshot del historial de debate
-**Output**: DebateMessage — máximo 3 oraciones por turno
-**Paralelismo**: Paralelo con ProductAgent y ArchitectAgent dentro de cada ronda
-**System prompt summary**: Pensador crítico que busca riesgos legales, de adopción y monetización.
-No es negativo, es riguroso. Referencia a los otros agentes por nombre.
-Fuerza al equipo a validar suposiciones.
+**Phase**: 1 — Debate
+**Role**: Devil's advocate — looks for risks, unvalidated assumptions and non-obvious problems.
+**Recommended model**: DeepSeek
+**Input**: IdeaContext + snapshot of the debate history
+**Output**: DebateMessage — at most 3 sentences per turn
+**Parallelism**: Parallel with ProductAgent and ArchitectAgent within each round
+**System prompt summary**: Critical thinker who looks for legal, adoption and monetization risks.
+Not negative, rigorous. References the other agents by name.
+Forces the team to validate assumptions.
 
 ---
 
 ### ContextDocSynthesizer
-**Fase**: 2 — Document Synthesis
-**Rol**: Genera context.md con visión, problema, usuarios, alcance y restricciones.
-**Modelo recomendado**: Claude
+**Phase**: 2 — Document Synthesis
+**Role**: Generates context.md with vision, problem, users, scope and constraints.
+**Recommended model**: Claude
 **Input**: IdeaContext + DebateHistory
-**Output**: Markdown — secciones: Visión, Problema, Usuarios objetivo,
-Alcance, Restricciones, Supuestos, Glosario
-**Paralelismo**: Paralelo con FlowDocSynthesizer y TaskDocSynthesizer
-**System prompt summary**: Technical writer que produce documentación clara y precisa.
-No inventa — solo sintetiza lo que surgió del debate.
+**Output**: Markdown — sections: Vision, Problem, Target users,
+Scope, Constraints, Assumptions, Glossary
+**Parallelism**: Parallel with FlowDocSynthesizer and TaskDocSynthesizer
+**System prompt summary**: Technical writer who produces clear and precise documentation.
+Does not invent — only synthesizes what emerged from the debate.
 
 ---
 
 ### FlowDocSynthesizer
-**Fase**: 2 — Document Synthesis
-**Rol**: Genera flows.md con flujos de usuario, edge cases y diagramas Mermaid.
-**Modelo recomendado**: Claude o ChatGPT
+**Phase**: 2 — Document Synthesis
+**Role**: Generates flows.md with user flows, edge cases and Mermaid diagrams.
+**Recommended model**: Claude or ChatGPT
 **Input**: IdeaContext + DebateHistory
-**Output**: Markdown — secciones: Flujos principales, Flujos alternativos,
-Edge cases, Diagramas Mermaid
-**Paralelismo**: Paralelo con ContextDocSynthesizer y TaskDocSynthesizer
-**System prompt summary**: Business analyst que documenta comportamiento del sistema.
-Incluye happy paths y casos borde identificados en el debate.
-Usa Mermaid para diagramas.
+**Output**: Markdown — sections: Main flows, Alternative flows,
+Edge cases, Mermaid diagrams
+**Parallelism**: Parallel with ContextDocSynthesizer and TaskDocSynthesizer
+**System prompt summary**: Business analyst who documents the system's behavior.
+Includes happy paths and edge cases identified in the debate.
+Uses Mermaid for diagrams.
 
 ---
 
 ### TaskDocSynthesizer
-**Fase**: 2 — Document Synthesis
-**Rol**: Genera tasks.md con Epics, User Stories y tareas técnicas con estimaciones S/M/L.
-**Modelo recomendado**: Claude
+**Phase**: 2 — Document Synthesis
+**Role**: Generates tasks.md with Epics, User Stories and technical tasks with S/M/L estimates.
+**Recommended model**: Claude
 **Input**: IdeaContext + DebateHistory
-**Output**: Markdown — estructura: Epics → User Stories → Tasks técnicas,
-cada task con descripción, criterios de aceptación y estimación S/M/L
-**Paralelismo**: Paralelo con ContextDocSynthesizer y FlowDocSynthesizer
-**System prompt summary**: Tech lead que descompone trabajo en tareas accionables.
-Prioriza por valor y dependencias. No genera tareas sin criterios de aceptación.
+**Output**: Markdown — structure: Epics → User Stories → Technical tasks,
+each task with description, acceptance criteria and S/M/L estimate
+**Parallelism**: Parallel with ContextDocSynthesizer and FlowDocSynthesizer
+**System prompt summary**: Tech lead who breaks work down into actionable tasks.
+Prioritizes by value and dependencies. Does not generate tasks without acceptance criteria.
 
 ---
 
 ### ValidationCriticAgent
-**Fase**: 3a — Critique
-**Rol**: Audita los 3 documentos buscando inconsistencias, gaps y temas a re-debatir.
-**Modelo recomendado**: DeepSeek
+**Phase**: 3a — Critique
+**Role**: Audits the 3 documents looking for inconsistencies, gaps and topics to re-debate.
+**Recommended model**: DeepSeek
 **Input**: PipelineOutput (3 docs) + DebateHistory
 **Output**: JSON — `{"critiques": [], "gaps": [], "refinementNeeds": []}`
-**Paralelismo**: Solo
-**System prompt summary**: Auditor de producto y arquitectura. Evalúa calidad y consistencia
-de los documentos. No evalúa convergencia — solo identifica problemas.
-Distingue entre problemas bloqueantes y mejoras incrementales.
+**Parallelism**: Solo
+**System prompt summary**: Product and architecture auditor. Evaluates quality and consistency
+of the documents. Does not evaluate convergence — only identifies problems.
+Distinguishes between blocking problems and incremental improvements.
 
 ---
 
 ### ValidationAgent
-**Fase**: 3b — Validation + Convergence
-**Rol**: Decide si el pipeline converge o hace loop basándose en docs y críticas.
-**Modelo recomendado**: ChatGPT
-**Input**: PipelineOutput (3 docs) + ValidationResult de fase 3a + loopCount
+**Phase**: 3b — Validation + Convergence
+**Role**: Decides whether the pipeline converges or loops based on docs and critiques.
+**Recommended model**: ChatGPT
+**Input**: PipelineOutput (3 docs) + ValidationResult from phase 3a + loopCount
 **Output**: JSON — `{"convergenceScore": 0-100, "shouldLoop": boolean, "reasoning": "..."}`
-**Paralelismo**: Solo, secuencial después de ValidationCriticAgent
-**System prompt summary**: Evaluador que determina convergencia del pipeline.
-convergenceScore 0-40: loop obligatorio. 41-74: loop recomendado. 75-100: avanzar.
-Considera el loopCount para evitar ciclos infinitos.
+**Parallelism**: Solo, sequential after ValidationCriticAgent
+**System prompt summary**: Evaluator who determines the pipeline's convergence.
+convergenceScore 0-40: loop mandatory. 41-74: loop recommended. 75-100: advance.
+Considers the loopCount to avoid infinite cycles.
 
 ---
 
 ### StackArchitectAgent
-**Fase**: 3.5 — Stack Architecture
-**Rol**: Define el stack tecnológico completo basado en los documentos convergidos.
-**Modelo recomendado**: Claude
+**Phase**: 3.5 — Stack Architecture
+**Role**: Defines the complete technology stack based on the converged documents.
+**Recommended model**: Claude
 **Input**: IdeaContext + PipelineOutput + DebateHistory
-**Output**: Markdown — secciones: Stack Decision, Services & Components,
+**Output**: Markdown — sections: Stack Decision, Services & Components,
 Deployment Model, Technical Constraints, Rationale
-**Paralelismo**: Solo
-**System prompt summary**: Software Architect senior que toma decisiones de stack
-considerando escalabilidad, complejidad del equipo, time-to-market y costos.
-Justifica cada decisión. No elige tecnología por moda.
+**Parallelism**: Solo
+**System prompt summary**: Senior Software Architect who makes stack decisions
+considering scalability, team complexity, time-to-market and costs.
+Justifies every decision. Does not choose technology by fashion.
 
 ---
 
 ### ScrumMasterAgent
-**Fase**: 4 — Planning Poker
-**Rol**: Simula al equipo completo estimando tareas con contexto técnico real.
-**Modelo recomendado**: Claude
+**Phase**: 4 — Planning Poker
+**Role**: Simulates the entire team estimating tasks with real technical context.
+**Recommended model**: Claude
 **Input**: List<Task> + ArchitectureDoc + Team
-**Output**: JSON — TaskGraph con storyPoints, votes y dependencies por tarea
-**Paralelismo**: Solo (simula paralelismo internamente)
-**System prompt summary**: Scrum Master que conoce el stack y el equipo.
-Estima cada tarea desde la perspectiva de cada rol del equipo.
-Usa escala Fibonacci. Identifica dependencias entre tareas.
-Justifica estimaciones altas con riesgos técnicos concretos.
+**Output**: JSON — TaskGraph with storyPoints, votes and dependencies per task
+**Parallelism**: Solo (simulates parallelism internally)
+**System prompt summary**: Scrum Master who knows the stack and the team.
+Estimates each task from the perspective of each team role.
+Uses the Fibonacci scale. Identifies dependencies between tasks.
+Justifies high estimates with concrete technical risks.
 
 ---
 
-### IdeaPipeline (meta-agente orquestador)
-**Fase**: Todas
-**Rol**: Coordina el flujo completo entre fases, gestiona el loop de convergencia
-y decide cuándo avanzar.
-**Modelo recomendado**: N/A — es código Java, no un LLM
+### IdeaPipeline (orchestrator meta-agent)
+**Phase**: All
+**Role**: Coordinates the full flow between phases, manages the convergence loop
+and decides when to advance.
+**Recommended model**: N/A — it is Java code, not an LLM
 **Input**: RawIdea + List<RefinementQA> + Team + debateRounds
-**Output**: PipelineResult completo
-**Paralelismo**: Orquesta paralelismo interno en fases 1, 2 y 4
-**System prompt summary**: No aplica. Su lógica es determinista:
-ejecuta fases en orden, evalúa convergenceScore después de 3b,
-hace loop enriqueciendo el contexto con gaps si shouldLoop=true,
-fuerza avance después de maxLoops.
+**Output**: Complete PipelineResult
+**Parallelism**: Orchestrates internal parallelism in phases 1, 2 and 4
+**System prompt summary**: Not applicable. Its logic is deterministic:
+runs phases in order, evaluates convergenceScore after 3b,
+loops by enriching the context with gaps if shouldLoop=true,
+forces advancement after maxLoops.
 
 ---
 
-## Diagrama de interacción entre agentes
+## Interaction diagram between agents
 
 ```
-[Usuario / Orquestador humano]
+[User / Human orchestrator]
          |
          | RawIdea
          ↓
-[GatekeeperAgent] ──preguntas──→ [Usuario]
+[GatekeeperAgent] ──questions──→ [User]
          |                            |
-         |←────────── respuestas ─────┘
+         |←────────── answers ────────┘
          |
 [ContextEnricherAgent]
          |
          | IdeaContext
          ↓
 ┌────────────────────────────────────┐
-│  FASE 1 — por ronda (paralelo)     │
+│  PHASE 1 — per round (parallel)    │
 │  [ProductAgent]                    │
 │  [ArchitectAgent]  → snapshot      │
 │  [CriticAgent]                     │
@@ -217,18 +222,18 @@ fuerza avance después de maxLoops.
               | DebateHistory
               ↓
 ┌────────────────────────────────────┐
-│  FASE 2 (paralelo)                 │
+│  PHASE 2 (parallel)                │
 │  [ContextDocSynthesizer]           │
 │  [FlowDocSynthesizer]              │
 │  [TaskDocSynthesizer]              │
 └─────────────┬──────────────────────┘
               | PipelineOutput (3 docs)
               ↓
-[ValidationCriticAgent] — Fase 3a
+[ValidationCriticAgent] — Phase 3a
               |
               | critiques + gaps
               ↓
-[ValidationAgent] — Fase 3b
+[ValidationAgent] — Phase 3b
               |
          convergenceScore
          /              \
@@ -236,37 +241,37 @@ fuerza avance después de maxLoops.
     shouldLoop=true     shouldLoop=false
        |                    |
        | enrich context      |
-       └──→ FASE 1 (loop)   ↓
-                    [StackArchitectAgent] — Fase 3.5
+       └──→ PHASE 1 (loop)  ↓
+                    [StackArchitectAgent] — Phase 3.5
                             |
                             | ArchitectureDoc
                             ↓
-                    [ScrumMasterAgent] — Fase 4
+                    [ScrumMasterAgent] — Phase 4
                             |
                             ↓
                        TaskGraph
 ```
 
-## Loop de convergencia
+## Convergence loop
 
-**Qué lo dispara**: convergenceScore < 75 en Fase 3b Y loopCount < maxLoops (3)
+**What triggers it**: convergenceScore < 75 in Phase 3b AND loopCount < maxLoops (3)
 
-**Qué se lleva al loop**: IdeaContext enriquecido con los gaps y refinementNeeds
-identificados por ValidationCriticAgent. El historial anterior NO se descarta —
-se añade como contexto adicional.
+**What is carried into the loop**: IdeaContext enriched with the gaps and refinementNeeds
+identified by ValidationCriticAgent. The previous history is NOT discarded —
+it is added as additional context.
 
-**Qué constituye convergencia**: convergenceScore >= 75. El sistema no requiere
-score perfecto — 75 indica que los documentos son suficientemente coherentes
-para definir el stack y estimar tareas.
+**What constitutes convergence**: convergenceScore >= 75. The system does not require
+a perfect score — 75 indicates that the documents are coherent enough
+to define the stack and estimate tasks.
 
-**Fuerza avance**: Si loopCount >= 3 independientemente del score.
-El pipeline reporta "convergencia forzada" en PipelineResult.
+**Forces advancement**: If loopCount >= 3 regardless of the score.
+The pipeline reports "forced convergence" in PipelineResult.
 
-## Añadir un nuevo agente
+## Adding a new agent
 
-1. Definir su rol, fase, input y output en este archivo.
-2. Crear su system prompt en el orchestrator correspondiente como constante privada.
-3. Si es una nueva fase: crear su orchestrator en `com.ideapipeline.orchestrator`.
-4. Wirear en `IdeaPipeline.java` en el orden correcto.
-5. Actualizar el diagrama de interacción en este archivo.
-6. Actualizar META_PIPELINE.md si la fase nueva cambia el flujo.
+1. Define its role, phase, input and output in this file.
+2. Create its system prompt in the corresponding orchestrator as a private constant.
+3. If it is a new phase: create its orchestrator in `com.ideapipeline.orchestrator`.
+4. Wire it into `IdeaPipeline.java` in the correct order.
+5. Update the interaction diagram in this file.
+6. Update META_PIPELINE.md if the new phase changes the flow.
