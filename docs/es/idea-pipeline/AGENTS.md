@@ -137,8 +137,9 @@ Prioriza por valor y dependencias. No genera tareas sin criterios de aceptación
 **Output**: JSON — `{"critiques": [], "gaps": [], "refinementNeeds": []}`
 **Paralelismo**: Solo
 **System prompt summary**: Auditor de producto y arquitectura. Evalúa calidad y consistencia
-de los documentos. No evalúa convergencia — solo identifica problemas.
-Distingue entre problemas bloqueantes y mejoras incrementales.
+de los documentos en contexto del debate que los produjo. No evalúa convergencia — solo
+identifica problemas. Distingue entre problemas bloqueantes y mejoras incrementales.
+El historial de debate se incluye en el mensaje al LLM para contextualizar las críticas.
 
 ---
 

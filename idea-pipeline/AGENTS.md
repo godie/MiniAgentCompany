@@ -137,8 +137,10 @@ Prioritizes by value and dependencies. Does not generate tasks without acceptanc
 **Output**: JSON — `{"critiques": [], "gaps": [], "refinementNeeds": []}`
 **Parallelism**: Solo
 **System prompt summary**: Product and architecture auditor. Evaluates quality and consistency
-of the documents. Does not evaluate convergence — only identifies problems.
-Distinguishes between blocking problems and incremental improvements.
+of the documents in the context of the debate that produced them. Does not evaluate
+convergence — only identifies problems. Distinguishes between blocking problems and
+incremental improvements. The debate history is included in the message to the LLM so
+the critiques are contextualised.
 
 ---
 

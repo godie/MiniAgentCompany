@@ -1,10 +1,14 @@
 package com.ideapipeline.pipeline;
 
 import com.ideapipeline.config.PipelineProperties;
+import com.ideapipeline.exception.PipelineException;
 import com.ideapipeline.model.*;
 import com.ideapipeline.orchestrator.*;
+import com.ideapipeline.parser.TaskParser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -17,7 +21,7 @@ public class IdeaPipeline {
     private final CriticOrchestrator criticOrchestrator;
     private final ValidationOrchestrator validationOrchestrator;
     private final StackArchitectOrchestrator stackArchitectOrchestrator;
-    private final PlanningPokerOrchestrator planningPokerOrchestrator;
+    private final ScrumMasterOrchestrator scrumMasterOrchestrator;
     private final PipelineProperties pipelineProperties;
 
     public IdeaPipeline(
@@ -27,7 +31,7 @@ public class IdeaPipeline {
             CriticOrchestrator criticOrchestrator,
             ValidationOrchestrator validationOrchestrator,
             StackArchitectOrchestrator stackArchitectOrchestrator,
-            PlanningPokerOrchestrator planningPokerOrchestrator,
+            ScrumMasterOrchestrator scrumMasterOrchestrator,
             PipelineProperties pipelineProperties) {
         this.gatekeeperOrchestrator = gatekeeperOrchestrator;
         this.debateOrchestrator = debateOrchestrator;
@@ -35,7 +39,7 @@ public class IdeaPipeline {
         this.criticOrchestrator = criticOrchestrator;
         this.validationOrchestrator = validationOrchestrator;
         this.stackArchitectOrchestrator = stackArchitectOrchestrator;
-        this.planningPokerOrchestrator = planningPokerOrchestrator;
+        this.scrumMasterOrchestrator = scrumMasterOrchestrator;
         this.pipelineProperties = pipelineProperties;
     }
 
@@ -46,83 +50,90 @@ public class IdeaPipeline {
         return questions;
     }
 
-    public PipelineResult runFullPipeline(
-            RawIdea idea,
-            List<RefinementQA> answers,
-            Team team,
-            int debateRounds) throws Exception {
+    public PipelineResult run(
+            RawIdea rawIdea,
+            List<RefinementQA> refinements,
+            Team team) throws Exception {
 
-        int rounds = debateRounds <= 0 ? pipelineProperties.getDefaultDebateRounds() : debateRounds;
-
-        IdeaContext context = gatekeeperOrchestrator.buildContext(idea, answers);
-        List<DebateMessage> debateHistory = debateOrchestrator.runDebate(context, rounds);
-        PipelineOutput documents = synthesisOrchestrator.synthesize(context, debateHistory);
-
-        int loopCount = 0;
-        int maxLoops = pipelineProperties.getMaxLoops();
-        IdeaContext currentContext = context;
-        PipelineOutput currentDocs = documents;
-        List<DebateMessage> currentHistory = debateHistory;
-        CritiqueResult lastCritique = null;
-
-        while (true) {
-            if (loopCount > 0) {
-                 log.info("--- STARTING PIPELINE LOOP {} ---", loopCount);
-            }
-
-            try {
-                CritiqueResult critique = criticOrchestrator.critique(currentDocs, currentHistory);
-                lastCritique = critique;
-                ValidationResult validation = validationOrchestrator.validate(currentDocs, critique, loopCount);
-
-                if (validation.shouldLoop() && loopCount < maxLoops) {
-                    log.warn("Convergence not met. Looping to refinement phase.");
-                    
-                    currentContext = enrichContextWithGaps(currentContext, critique);
-                    currentHistory = debateOrchestrator.runDebate(currentContext, rounds);
-                    currentDocs = synthesisOrchestrator.synthesize(currentContext, currentHistory);
-                    
-                    loopCount++;
-
-                } else {
-                    log.info("Pipeline converged or max loops reached. Finalizing.");
-                    break;
-                }
-            } catch (UnsupportedOperationException e) {
-                log.warn("Caught expected placeholder exception during loop: {}. Breaking loop.", e.getMessage());
-                break;
-            }
+        if (rawIdea == null || rawIdea.description() == null || rawIdea.description().isBlank()) {
+            throw new PipelineException("rawIdea is null or empty", "Phase0", 0);
+        }
+        if (team == null) {
+            throw new PipelineException("team is null", "Phase4", 0);
         }
 
-        ArchitectureDoc architecture = stackArchitectOrchestrator.defineStack(currentContext, currentDocs, currentHistory);
-        TaskGraph taskGraph = planningPokerOrchestrator.runPlanningPoker(currentDocs.taskDocument(), team, architecture);
+        List<RefinementQA> safeRefinements = refinements == null ? Collections.emptyList() : refinements;
+        log.info("Running pipeline for idea (length={}) with {} team members",
+                rawIdea.description().length(), team.members().size());
 
+        int debateRounds = pipelineProperties.getDefaultDebateRounds();
+        int maxLoops = pipelineProperties.getMaxLoops();
+        int convergenceThreshold = pipelineProperties.getConvergenceThreshold();
 
-        return new PipelineResult(
-                currentContext,
-                currentDocs,
-                architecture,
-                taskGraph,
-                loopCount
-        );
+        log.info("Phase 0 — Context building");
+        IdeaContext ideaContext = gatekeeperOrchestrator.buildContext(rawIdea, safeRefinements);
+
+        log.info("Phase 1 — Debate ({} rounds)", debateRounds);
+        List<DebateMessage> debateHistory = debateOrchestrator.runDebate(ideaContext, debateRounds);
+
+        log.info("Phase 2 — Document synthesis");
+        PipelineOutput pipelineOutput = synthesisOrchestrator.synthesize(ideaContext, debateHistory);
+
+        int loopCount = 0;
+        IdeaContext currentContext = ideaContext;
+        PipelineOutput currentOutput = pipelineOutput;
+        List<DebateMessage> currentHistory = debateHistory;
+
+        while (true) {
+            log.info("Phase 3a — Critique (loopCount={})", loopCount);
+            CritiqueResult critiqueResult = criticOrchestrator.critique(currentOutput, currentHistory);
+
+            log.info("Phase 3b — Validation (loopCount={})", loopCount);
+            ValidationResult validationResult = validationOrchestrator.validate(currentOutput, critiqueResult, loopCount);
+
+            log.info("convergenceScore={}, shouldLoop={}, loopCount={}",
+                    validationResult.convergenceScore(), validationResult.shouldLoop(), loopCount);
+
+            if (validationResult.convergenceScore() >= convergenceThreshold || !validationResult.shouldLoop()) {
+                log.info("Pipeline converged at loopCount={}", loopCount);
+                break;
+            }
+
+            if (loopCount + 1 >= maxLoops) {
+                log.warn("Forcing convergence after {} loops", loopCount + 1);
+                break;
+            }
+
+            log.info("Looping to refine — enriching context with gaps");
+            currentContext = enrichContextWithGaps(currentContext, critiqueResult, loopCount);
+            currentHistory = debateOrchestrator.runDebate(currentContext, debateRounds);
+            currentOutput = synthesisOrchestrator.synthesize(currentContext, currentHistory);
+            loopCount++;
+        }
+
+        log.info("Phase 3.5 — Stack architecture");
+        ArchitectureDoc architectureDoc = stackArchitectOrchestrator.defineStack(currentContext, currentOutput, currentHistory);
+
+        log.info("Phase 4 — Planning poker");
+        List<Task> tasks = TaskParser.parse(currentOutput.taskDocument());
+        TaskGraph taskGraph = scrumMasterOrchestrator.estimateTasks(tasks, architectureDoc, team);
+
+        log.info("Pipeline complete: loopsRequired={}, totalPoints={}", loopCount, taskGraph.totalPoints());
+
+        return new PipelineResult(currentContext, currentOutput, architectureDoc, taskGraph, loopCount);
     }
 
-    private IdeaContext enrichContextWithGaps(IdeaContext context, CritiqueResult critique) {
-        String additionalContext = """
-        GAPS FROM PREVIOUS ITERATION:
-        %s
+    private IdeaContext enrichContextWithGaps(IdeaContext context, CritiqueResult critique, int loopCount) {
+        String gaps = String.join("; ", critique.gaps());
+        String needs = String.join("; ", critique.refinementNeeds());
 
-        TOPICS TO RE-DEBATE:
-        %s
-        """.formatted(
-            String.join("\n- ", critique.gaps()),
-            String.join("\n- ", critique.refinementNeeds())
-        );
+        String additionalContext = "\n--- Refinement round %d ---\nGaps: %s\nNeeds: %s"
+                .formatted(loopCount + 1, gaps, needs);
 
         return new IdeaContext(
-            context.rawIdea(),
-            context.refinements(),
-            context.enrichedSummary() + "\n\n" + additionalContext
+                context.rawIdea(),
+                context.refinements(),
+                context.enrichedSummary() + additionalContext
         );
     }
 }

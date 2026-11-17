@@ -1,64 +1,105 @@
 package com.ideapipeline.controller;
 
-import com.ideapipeline.model.PipelineResult;
-import com.ideapipeline.model.RawIdea;
-import com.ideapipeline.model.RunRequest;
-import com.ideapipeline.model.Team;
-import com.ideapipeline.model.TeamMember;
-import com.ideapipeline.model.enums.BaseRole;
-import com.ideapipeline.model.enums.Seniority;
-import com.ideapipeline.pipeline.IdeaPipeline;
-import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ideapipeline.controller.dto.*;
+import com.ideapipeline.model.*;
+import com.ideapipeline.model.enums.PipelineJobStatus;
+import com.ideapipeline.orchestrator.GatekeeperOrchestrator;
+import com.ideapipeline.pipeline.PipelineJobService;
+import com.ideapipeline.repository.PipelineJobRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.RequestMapping;
+
+import java.util.Collections;
 import java.util.List;
 
 @RestController
 @RequestMapping("/pipeline")
-@RequiredArgsConstructor
 @Slf4j
-@Validated
 public class PipelineController {
 
-    private final IdeaPipeline ideaPipeline;
+    private final PipelineJobService pipelineJobService;
+    private final PipelineJobRepository repository;
+    private final GatekeeperOrchestrator gatekeeperOrchestrator;
+    private final ObjectMapper objectMapper;
 
-    @PostMapping("/start")
-    public ResponseEntity<List<String>> startPipeline(@RequestBody RawIdea idea) {
-        log.info("Received request to start pipeline for idea: {}", idea.description());
-        List<String> questions = ideaPipeline.startPipeline(idea);
-        return ResponseEntity.ok(questions);
+    public PipelineController(PipelineJobService pipelineJobService,
+                               PipelineJobRepository repository,
+                               GatekeeperOrchestrator gatekeeperOrchestrator,
+                               ObjectMapper objectMapper) {
+        this.pipelineJobService = pipelineJobService;
+        this.repository = repository;
+        this.gatekeeperOrchestrator = gatekeeperOrchestrator;
+        this.objectMapper = objectMapper;
+    }
+
+    @PostMapping("/questions")
+    public ResponseEntity<QuestionsResponse> postQuestions(@RequestBody QuestionsRequest request) {
+        log.info("POST /pipeline/questions");
+        if (request.description() == null || request.description().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<String> questions = gatekeeperOrchestrator.generateRefinementQuestions(new RawIdea(request.description()));
+        return ResponseEntity.ok(new QuestionsResponse(questions));
     }
 
     @PostMapping("/run")
-    public ResponseEntity<PipelineResult> runPipeline(@RequestBody RunRequest request) {
-        log.info("Received request to run full pipeline: {}", request.triggerDescription());
-        
+    public ResponseEntity<RunPipelineResponse> postRun(@RequestBody RunPipelineRequest request) {
+        log.info("POST /pipeline/run");
+        if (request.idea() == null || request.idea().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (request.team() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (request.team().members() == null || request.team().members().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        RawIdea rawIdea = new RawIdea(request.idea());
+        List<RefinementQA> refinements = request.refinements() != null ? request.refinements() : Collections.emptyList();
+
+        String jobId = pipelineJobService.submitJob(rawIdea, refinements, request.team());
+        return ResponseEntity.accepted().body(new RunPipelineResponse(jobId, "QUEUED", "Pipeline job submitted"));
+    }
+
+    @GetMapping("/{jobId}/status")
+    public ResponseEntity<JobStatusResponse> getStatus(@PathVariable String jobId) {
+        log.info("GET /pipeline/{}/status", jobId);
+        return repository.findById(jobId)
+                .map(job -> ResponseEntity.ok(new JobStatusResponse(
+                        job.getId(),
+                        job.getStatus().name(),
+                        job.getCreatedAt(),
+                        job.getUpdatedAt(),
+                        job.getErrorMessage()
+                )))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{jobId}/result")
+    public ResponseEntity<JobResultResponse> getResult(@PathVariable String jobId) {
+        log.info("GET /pipeline/{}/result", jobId);
+        var optJob = repository.findById(jobId);
+        if (optJob.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        PipelineJob job = optJob.get();
+        if (job.getStatus() != PipelineJobStatus.DONE) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
         try {
-            TeamMember dummyMember = new TeamMember(
-                    "dummy-id",
-                    "Dummy Member",
-                    BaseRole.FULLSTACK_DEV,
-                    Seniority.MID,
-                    List.of()
-            );
-            PipelineResult result = ideaPipeline.runFullPipeline(
-                    request.idea(),
-                    List.of(),
-                    new Team(List.of(dummyMember)),
-                    request.debateRounds()
-            );
-            return ResponseEntity.ok(result);
+            PipelineResult result = objectMapper.readValue(job.getResultJson(), PipelineResult.class);
+            return ResponseEntity.ok(new JobResultResponse(job.getId(), job.getStatus().name(), result));
         } catch (Exception e) {
-            log.error("Pipeline execution failed.", e);
             return ResponseEntity.internalServerError().build();
         }
     }
-    
+
     @GetMapping("/health")
-    public ResponseEntity<String> healthCheck() {
-        return ResponseEntity.ok("{\"status\": \"ok\", \"version\": \"1.0\"}");
+    public ResponseEntity<String> health() {
+        return ResponseEntity.ok("OK");
     }
 }

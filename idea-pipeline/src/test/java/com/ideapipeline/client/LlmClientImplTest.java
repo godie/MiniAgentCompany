@@ -21,7 +21,22 @@ import static org.mockito.Mockito.*;
 class LlmClientImplTest {
 
     @Mock
-    private ChatClient chatClient;
+    private ChatClient openAiChatClient;
+
+    @Mock
+    private ChatClient anthropicChatClient;
+
+    @Mock
+    private ChatClient deepSeekChatClient;
+
+    @Mock
+    private ChatClient mistralAiChatClient;
+
+    @Mock
+    private ChatClient googleGenAiChatClient;
+
+    @Mock
+    private ChatClient ollamaChatClient;
 
     @Mock
     private ChatClient.ChatClientRequestSpec chatClientRequestSpec;
@@ -33,7 +48,20 @@ class LlmClientImplTest {
 
     @BeforeEach
     void setUp() {
-        llmClient = new LlmClientImpl(chatClient);
+        llmClient = new LlmClientImpl(
+                openAiChatClient,
+                anthropicChatClient,
+                deepSeekChatClient,
+                mistralAiChatClient,
+                googleGenAiChatClient,
+                ollamaChatClient);
+    }
+
+    private void stubOllamaClient(String response) {
+        reset(ollamaChatClient);
+        doReturn(chatClientRequestSpec).when(ollamaChatClient).prompt(any(Prompt.class));
+        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
+        doReturn(response).when(callResponseSpec).content();
     }
 
     @Test
@@ -42,14 +70,12 @@ class LlmClientImplTest {
         String userMessage = "Hello, how are you?";
         String expectedResponse = "I'm doing great, thanks!";
 
-        doReturn(chatClientRequestSpec).when(chatClient).prompt(any(Prompt.class));
-        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
-        doReturn(expectedResponse).when(callResponseSpec).content();
+        stubOllamaClient(expectedResponse);
 
         String result = llmClient.chat(systemPrompt, userMessage);
 
         assertEquals(expectedResponse, result);
-        verify(chatClient).prompt(any(Prompt.class));
+        verify(ollamaChatClient).prompt(any(Prompt.class));
         verify(chatClientRequestSpec).call();
         verify(callResponseSpec).content();
     }
@@ -59,13 +85,13 @@ class LlmClientImplTest {
         String systemPrompt = "You are a helpful assistant";
         String userMessage = "Hello";
 
-        doThrow(new RuntimeException("Connection failed")).when(chatClient).prompt(any(Prompt.class));
+        doThrow(new RuntimeException("Connection failed")).when(ollamaChatClient).prompt(any(Prompt.class));
 
         PipelineException exception = assertThrows(PipelineException.class, () -> {
             llmClient.chat(systemPrompt, userMessage);
         });
 
-        assertEquals("LLM call failed", exception.getMessage());
+        assertTrue(exception.getMessage().contains("LLM call failed"));
         assertEquals("LlmClient", exception.getPhase());
     }
 
@@ -78,14 +104,12 @@ class LlmClientImplTest {
         String userMessage = "What's your final decision?";
         String expectedResponse = "After careful consideration...";
 
-        doReturn(chatClientRequestSpec).when(chatClient).prompt(any(Prompt.class));
-        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
-        doReturn(expectedResponse).when(callResponseSpec).content();
+        stubOllamaClient(expectedResponse);
 
         String result = llmClient.chatWithHistory(systemPrompt, history, userMessage);
 
         assertEquals(expectedResponse, result);
-        verify(chatClient).prompt(any(Prompt.class));
+        verify(ollamaChatClient).prompt(any(Prompt.class));
     }
 
     @Test
@@ -96,13 +120,11 @@ class LlmClientImplTest {
         String userMessage = "Continue";
         String expectedResponse = "Understood";
 
-        doReturn(chatClientRequestSpec).when(chatClient).prompt(any(Prompt.class));
-        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
-        doReturn(expectedResponse).when(callResponseSpec).content();
+        stubOllamaClient(expectedResponse);
 
         llmClient.chatWithHistory(systemPrompt, history, userMessage);
 
-        verify(chatClient).prompt(any(Prompt.class));
+        verify(ollamaChatClient).prompt(any(Prompt.class));
     }
 
     @Test
@@ -112,14 +134,12 @@ class LlmClientImplTest {
         String userMessage = "Hello";
         String expectedResponse = "Hi there!";
 
-        doReturn(chatClientRequestSpec).when(chatClient).prompt(any(Prompt.class));
-        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
-        doReturn(expectedResponse).when(callResponseSpec).content();
+        stubOllamaClient(expectedResponse);
 
         String result = llmClient.chatWithHistory(systemPrompt, history, userMessage);
 
         assertEquals(expectedResponse, result);
-        verify(chatClient).prompt(any(Prompt.class));
+        verify(ollamaChatClient).prompt(any(Prompt.class));
     }
 
     @Test
@@ -129,12 +149,94 @@ class LlmClientImplTest {
         history.add(new DebateMessage("Agent", "Message", 1));
         String userMessage = "Hello";
 
-        doThrow(new RuntimeException("Network error")).when(chatClient).prompt(any(Prompt.class));
+        doThrow(new RuntimeException("Network error")).when(ollamaChatClient).prompt(any(Prompt.class));
 
         PipelineException exception = assertThrows(PipelineException.class, () -> {
             llmClient.chatWithHistory(systemPrompt, history, userMessage);
         });
 
-        assertEquals("LLM call failed", exception.getMessage());
+        assertTrue(exception.getMessage().contains("LLM call failed"));
+    }
+
+    @Test
+    void chatWithModel_shouldUseCorrectProvider() {
+        String systemPrompt = "Test prompt";
+        String userMessage = "Test message";
+        String expectedResponse = "Anthropic response";
+
+        doReturn(chatClientRequestSpec).when(anthropicChatClient).prompt(any(Prompt.class));
+        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
+        doReturn(expectedResponse).when(callResponseSpec).content();
+
+        String result = llmClient.chatWithModel(systemPrompt, userMessage, ModelProvider.ANTHROPIC);
+
+        assertEquals(expectedResponse, result);
+        verify(anthropicChatClient).prompt(any(Prompt.class));
+    }
+
+    @Test
+    void chatWithHistoryAndModel_shouldUseCorrectProvider() {
+        String systemPrompt = "Test prompt";
+        List<DebateMessage> history = new ArrayList<>();
+        history.add(new DebateMessage("Agent", "Message", 1));
+        String userMessage = "Test message";
+        String expectedResponse = "DeepSeek response";
+
+        doReturn(chatClientRequestSpec).when(deepSeekChatClient).prompt(any(Prompt.class));
+        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
+        doReturn(expectedResponse).when(callResponseSpec).content();
+
+        String result = llmClient.chatWithHistoryAndModel(systemPrompt, history, userMessage, ModelProvider.DEEPSEEK);
+
+        assertEquals(expectedResponse, result);
+        verify(deepSeekChatClient).prompt(any(Prompt.class));
+    }
+
+    @Test
+    void chatAnthropic_shouldDelegateToChatWithModel() {
+        String systemPrompt = "Test prompt";
+        String userMessage = "Test message";
+        String expectedResponse = "Claude response";
+
+        doReturn(chatClientRequestSpec).when(anthropicChatClient).prompt(any(Prompt.class));
+        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
+        doReturn(expectedResponse).when(callResponseSpec).content();
+
+        String result = llmClient.chatAnthropic(systemPrompt, userMessage);
+
+        assertEquals(expectedResponse, result);
+        verify(anthropicChatClient).prompt(any(Prompt.class));
+    }
+
+    @Test
+    void chatDeepSeek_shouldDelegateToChatWithModel() {
+        String systemPrompt = "Test prompt";
+        String userMessage = "Test message";
+        String expectedResponse = "DeepSeek response";
+
+        doReturn(chatClientRequestSpec).when(deepSeekChatClient).prompt(any(Prompt.class));
+        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
+        doReturn(expectedResponse).when(callResponseSpec).content();
+
+        String result = llmClient.chatDeepSeek(systemPrompt, userMessage);
+
+        assertEquals(expectedResponse, result);
+        verify(deepSeekChatClient).prompt(any(Prompt.class));
+    }
+
+    @Test
+    void chatOpenAi_shouldDelegateToChatWithModel() {
+        String systemPrompt = "Test prompt";
+        String userMessage = "Test message";
+        String expectedResponse = "GPT response";
+
+        doReturn(chatClientRequestSpec).when(openAiChatClient).prompt(any(Prompt.class));
+        doReturn(callResponseSpec).when(chatClientRequestSpec).call();
+        doReturn(expectedResponse).when(callResponseSpec).content();
+
+        String result = llmClient.chatOpenAi(systemPrompt, userMessage);
+
+        assertEquals(expectedResponse, result);
+        verify(openAiChatClient).prompt(any(Prompt.class));
     }
 }

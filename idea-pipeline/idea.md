@@ -1,12 +1,12 @@
 # idea.md
 
-**Version:** 1.2
-**Last updated:** 2026-04-10
+**Version:** 1.3
+**Last updated:** 2026-04-19
 **Based on:** manually converged design (score 91)
 
 
 ## Idea
-A multi-agent debate and convergence system to transform raw ideas
+Multi-agent debate and convergence system to transform raw ideas
 into structured, execution-ready software projects.
 
 ## Problem it solves
@@ -27,14 +27,14 @@ a software idea before writing a single line of code.
 - TaskGraph — estimated tasks with dependencies and points
 
 ## Known constraints
-- Manual proof of concept first, automation afterwards
-- Stack: Java 21 + Spring Boot 3.3 + Spring AI + virtual threads
+- Sequential implementation (v1) — complete functional base
+- Stack: Java 21 + Spring Boot 4.1 + Spring AI + JPA/H2
 - Initial LLM provider: OpenAI (gpt-4o-mini)
-- The system is recursive: it used itself to design itself
+- The system is recursive: it was used to design itself
 
-## Current state
-Design pipeline completed manually:
-- Claude → Architect + Gatekeeper
-- DeepSeek → CriticAgent (Phase 3a)
-- ChatGPT → ValidationAgent (Phase 3b)
-- design convergenceScore: 93 — FINAL
+## Current status
+Implementation completed — 129 tests passing, 0 failures.
+All orchestrators, main orchestrator, CLI and REST API implemented.
+REST API exposes: POST /questions, POST /run (async), GET /{id}/status, GET /{id}/result, GET /health.
+CLI exposes: --idea, --team, --interactive, --refinements, --output.
+Next step: virtual threads v2, deploy.

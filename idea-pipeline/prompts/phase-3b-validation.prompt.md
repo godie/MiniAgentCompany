@@ -1,10 +1,9 @@
-# phase-3b-validation.prompt.md v1.0
+# phase-3b-validation.prompt.md v1.1
 
 ## Role
 You are a Senior Java Developer implementing Phase 3b of the idea-pipeline system.
-Phase 3b evaluates whether the three synthesized documents have converged
-sufficiently to advance to architecture definition, or whether another
-debate→synthesis loop is needed.
+Phase 3b receives the 3 documents + the critique from Phase 3a and decides
+whether the pipeline has converged or needs another loop.
 
 ## Context
 Read these files before writing any code:
@@ -16,43 +15,27 @@ Read these files before writing any code:
 
 ## What already exists — do not modify
 
-These files are FULLY IMPLEMENTED and tested:
-
-- `LlmClient.java` — interface:
-  - `chat(String systemPrompt, String userMessage)`
-  - `chatWithHistory(String systemPrompt, List<DebateMessage> history, String userMessage)`
-
-- `LlmClientImpl.java` — @Component, fully implemented. 6 tests passing.
-
-- `JsonParser.java` — package `com.ideapipeline.client`
-  `public static JsonNode parse(String response)`
-
+- `LlmClient.java` — interface, fully implemented. 6 tests passing.
+- `LlmClientImpl.java` — @Component, fully implemented.
+- `JsonParser.java` — `public static JsonNode parse(String response)`
 - `GatekeeperOrchestrator.java` — fully implemented. 8 tests passing.
-- `DebateOrchestrator.java` — fully implemented. 9 tests passing.
+- `DebateOrchestrator.java` — fully implemented. 7 tests passing.
 - `SynthesisOrchestrator.java` — fully implemented. 8 tests passing.
-- `CriticOrchestrator.java` — fully implemented. 9 tests passing.
-
-- `PipelineOutput.java` — record, do not modify.
-- `CritiqueResult.java` — record, do not modify.
-- `ValidationResult.java` — record, do not modify:
-  `ValidationResult(int convergenceScore, boolean shouldLoop, String reasoning)`
-
-- `PipelineException.java` — constructors available.
-
-- `IdeaPipeline.java` — handles `maxLoops` policy externally.
-  Your orchestrator does NOT enforce maxLoops; it only computes the score
-  and `shouldLoop` recommendation.
-
-- `ValidationOrchestrator.java` — YOUR TARGET FILE
-  Currently uses dummy formula: `score = max(10, 100 - loopCount * 5)`.
-  Inject `LlmClient` via constructor:
-  `public ValidationOrchestrator(LlmClient llmClient)`
-
----
+- `CriticOrchestrator.java` — fully implemented. 11 tests passing.
+- `PipelineOutput.java`, `CritiqueResult.java`, `ValidationResult.java` — records, do not modify:
+  - `CritiqueResult(List<String> critiques, List<String> gaps, List<String> refinementNeeds)`
+  - `ValidationResult(int convergenceScore, boolean shouldLoop, String reasoning)`
+- `PipelineConfig.java` — has PipelineProperties with convergenceThreshold and maxLoops
+- `PipelineProperties.java` — inject to read convergenceThreshold
+- `PipelineException.java` — constructors:
+  - `PipelineException(String message, String phase, int loopCount)`
+  - `PipelineException(String message, String phase, int loopCount, Throwable cause)`
+- `ValidationOrchestrator.java` — YOUR TARGET FILE.
+  Inject `LlmClient` and `PipelineProperties` via constructor.
 
 ## Project status
-- `mvn clean compile` → SUCCESS
-- `mvn test` → 38/38 passing
+- mvn clean compile → SUCCESS
+- mvn test → 40/40 passing
 
 ---
 
@@ -62,272 +45,201 @@ Implement `ValidationOrchestrator.java` — one method: `validate()`
 
 ---
 
-### System prompt constant
+## System prompt — define as private static final String constant
 
 ```java
 private static final String VALIDATION_SYSTEM_PROMPT = """
-You are a convergence evaluator for a software design pipeline.
-You receive three documents (context, flows, tasks) and the results
-of a prior audit (critiques, gaps, refinement needs).
+    You are a convergence evaluator for a multi-agent pipeline.
+    You receive 3 documents and a critique report and must decide
+    if the pipeline has converged or needs another iteration.
 
-Your job is to decide whether the documents are sufficiently coherent
-and complete to advance to architecture definition.
+    convergenceScore rules:
+    - 0-40: major inconsistencies, loop mandatory
+    - 41-74: significant gaps, loop recommended
+    - 75-100: documents are coherent, advance
 
-Score rubric (0-100):
-
-0-40 — CRITICAL: Major inconsistencies, contradictions, or missing sections.
-        Must loop. Documents are not usable.
-
-41-74 — NEEDS WORK: Significant gaps or vague sections exist, but the core
-         is directionally correct. Looping is recommended but not forced.
-
-75-89 — GOOD: Documents are coherent and mostly complete. Minor gaps
-         are acceptable. Should advance.
-
-90-100 — EXCELLENT: Documents are thorough, consistent, and ready for
-          architecture definition. Definitely advance.
-
-Your shouldLoop recommendation:
-- true  → send back to debate+synthesis
-- false → advance to architecture
-
-IMPORTANT: Consider the loopCount in your reasoning.
-- If loopCount >= 2, be more permissive (the system is converging slowly).
-- If this is the first pass (loopCount = 0), be rigorous.
-
-Respond ONLY in JSON with this exact format, no preamble, no markdown:
-{
-  "convergenceScore": 82,
-  "shouldLoop": false,
-  "reasoning": "Brief explanation of the score and decision (max 150 words)"
-}
-""";
+    Respond ONLY in JSON with this exact format, no preamble, no markdown:
+    {
+      "convergenceScore": 85,
+      "shouldLoop": false,
+      "reasoning": "explanation"
+    }
+    """;
 ```
 
 ---
 
-## Implementation: `validate()`
+## Method: validate()
 
 **Signature:**
 ```java
-public ValidationResult validate(PipelineOutput docs, CritiqueResult critique, int loopCount)
+public ValidationResult validate(
+    PipelineOutput docs,
+    CritiqueResult critique,
+    int loopCount
+)
 ```
 
-**Purpose:** Evaluate document convergence using an LLM to assign a score
-and decide whether another debate→synthesis loop is needed.
+**Purpose:** Send the 3 documents + critique to the LLM validator and parse the JSON response. The `shouldLoop` field in the response is advisory — `IdeaPipeline` enforces the maxLoops limit, NOT this method.
 
----
+**Exact userMessage format:**
 
-### Implementation steps
+Each list from `CritiqueResult` is serialized line by line, one item per line, with prefix `- `. If a list is null or empty, write `- (none)` instead.
 
-1. **Validate inputs**
-   - If `docs == null`: throw `PipelineException("docs is null", "Phase3b", loopCount)`
-   - If `critique == null`: throw `PipelineException("critique is null", "Phase3b", loopCount)`
+```
+=== DOCUMENTS ===
+--- CONTEXT ---
+{docs.contextDocument()}
+--- FLOWS ---
+{docs.flowDocument()}
+--- TASKS ---
+{docs.taskDocument()}
+=== CRITIQUE (iteration {loopCount}) ===
+Critiques:
+- critique item 1
+- critique item 2
 
-2. **Build user message**
+Gaps:
+- gap item 1
 
-   ```
-   === LOOP COUNT: [loopCount] ===
+Refinement needs:
+- refinement item 1
+- refinement item 2
+```
 
-   --- CONTEXT DOCUMENT ---
-   [docs.contextDocument()]
+**Concrete example** — given `loopCount = 2` and a `CritiqueResult` with:
+- `critiques = ["Missing error handling", "Inconsistent naming"]`
+- `gaps = ["No deployment section"]`
+- `refinementNeeds = []`
 
-   --- FLOW DOCUMENT ---
-   [docs.flowDocument()]
+The critique section must render as:
+```
+=== CRITIQUE (iteration 2) ===
+Critiques:
+- Missing error handling
+- Inconsistent naming
 
-   --- TASK DOCUMENT ---
-   [docs.taskDocument()]
+Gaps:
+- No deployment section
 
-   --- AUDIT RESULTS ---
-   Critiques found:
-   - [critique.critiques() joined by "\n- "]
+Refinement needs:
+- (none)
+```
 
-   Gaps identified:
-   - [critique.gaps() joined by "\n- "]
+**Implementation steps:**
 
-   Refinement needs:
-   - [critique.refinementNeeds() joined by "\n- "]
-   ```
+1. Validate inputs:
+   - If `docs` is null: throw `PipelineException("docs is null", "Phase3b", 0)`
+   - If `critique` is null: throw `PipelineException("critique is null", "Phase3b", loopCount)`
+   - If `loopCount < 0`: throw `PipelineException("loopCount must be >= 0", "Phase3b", loopCount)`
 
-   - If any critique list is empty, write: `(none)`
-   - Include the loopCount prominently so the LLM can factor it into
-     convergence tolerance
+2. Build a private helper `formatList(List<String> items)` that returns a String:
+   - If `items` is null or empty: return `"- (none)"`
+   - Otherwise: join each item as `"- " + item`, one per line (`\n`)
 
-3. **Call LLM**
-   ```java
-   String response = llmClient.chat(VALIDATION_SYSTEM_PROMPT, userMessage);
-   ```
+3. Build `userMessage` using the exact format above, calling `formatList()` for each of the three critique lists
 
-4. **Validate response**
-   - If `response == null || response.isBlank()`:
-     throw `PipelineException("Empty response from LLM", "Phase3b", loopCount)`
+4. Call `llmClient.chat(VALIDATION_SYSTEM_PROMPT, userMessage)`
 
-5. **Parse JSON**
-   ```java
-   try {
-       JsonNode node = JsonParser.parse(response);
-       
-       int convergenceScore = node.get("convergenceScore").asInt();
-       boolean shouldLoop = node.get("shouldLoop").asBoolean();
-       String reasoning = node.get("reasoning").asText();
-       
-       // Validate score range
-       if (convergenceScore < 0 || convergenceScore > 100) {
-           throw new PipelineException(
-               "Invalid convergenceScore: " + convergenceScore + " (must be 0-100)",
-               "Phase3b", loopCount);
-       }
-       
-       return new ValidationResult(convergenceScore, shouldLoop, reasoning);
-   } catch (PipelineException e) {
-       throw e;
-   } catch (RuntimeException e) {
-       throw new PipelineException("Failed to parse validation JSON", "Phase3b", loopCount, e);
-   }
-   ```
+5. If response is null or blank:
+   throw `PipelineException("Empty response from validation LLM", "Phase3b", loopCount)`
 
----
+6. Parse with `JsonParser.parse(response)` — wrap RuntimeException:
+   throw `PipelineException("Failed to parse validation JSON", "Phase3b", loopCount, e)`
 
-## Logging
+7. Extract from JsonNode:
+   - `convergenceScore` → int (default `0` if missing)
+   - `shouldLoop` → boolean (default `true` if missing)
+   - `reasoning` → String (default `""` if missing)
 
-- `log.info()` on method entry: loopCount and document lengths
-- `log.info()` after success: convergenceScore, shouldLoop, reasoning summary
-- `log.warn()` if convergenceScore < 75 and shouldLoop == true (about to loop)
-- `log.info()` if convergenceScore >= 75 and shouldLoop == false (advancing)
+8. Return `new ValidationResult(convergenceScore, shouldLoop, reasoning)`
+
+**Logging:**
+- `log.info()` on entry: loopCount + size of each critique list
+- `log.info()` after parsing: convergenceScore and shouldLoop
+- `log.warn()` if `convergenceScore < convergenceThreshold`
 - `log.error()` on any caught exception before rethrowing
 
 ---
 
-## Exception handling
-
-```java
-// Pattern:
-try {
-    // ... LLM call + JSON parsing ...
-} catch (PipelineException e) {
-    throw e;
-} catch (RuntimeException e) {
-    throw new PipelineException("Validation failed", "Phase3b", loopCount, e);
-}
-```
-
----
-
 ## Coding standards
-
-- `@Service` + `@Slf4j` on class
-- Constructor injection only — `public ValidationOrchestrator(LlmClient llmClient)`
-- No `@Autowired` on fields
-- System prompt as `private static final String` constant
+- Constructor injection only
+- @Service + @Slf4j
+- No @Autowired on fields
 - All JSON parsing via `JsonParser.parse()`
-- All LLM exceptions wrapped in `PipelineException`
-- No dummy formula — score MUST come from LLM evaluation
-- Remove the placeholder `Math.max(10, 100 - loopCount * 5)` logic entirely
-- Score range validation (0-100) after parsing
+- System prompt as private static final String constant
+- Missing JSON fields use safe defaults (never null, never exception)
+- `formatList()` is a private helper method — not exposed publicly
+- This method does NOT enforce maxLoops — that is IdeaPipeline's responsibility
 
 ---
 
 ## Testing requirements (TDD)
 
 Test file: `src/test/java/com/ideapipeline/orchestrator/ValidationOrchestratorTest.java`
-Use `@ExtendWith(MockitoExtension.class)` and mock `LlmClient`.
 
-### Required tests
+### Tests required
 
-1. **`validate_shouldReturnParsedValidationResult`**
-   - Mock `llmClient.chat()` to return:
-     ```json
-     {"convergenceScore":82,"shouldLoop":false,"reasoning":"Documents are coherent"}
-     ```
-   - Verify `result.convergenceScore() == 82`
-   - Verify `result.shouldLoop() == false`
-   - Verify `result.reasoning()` equals `"Documents are coherent"`
+- `validate_shouldReturnParsedValidationResult`
+  Mock response: `{"convergenceScore": 85, "shouldLoop": false, "reasoning": "good"}`
+  Verify convergenceScore == 85, shouldLoop == false, reasoning == "good"
 
-2. **`validate_shouldReturnShouldLoopTrue_whenScoreIsLow`**
-   - Mock response with `convergenceScore: 35, shouldLoop: true`
-   - Verify `result.shouldLoop() == true`
+- `validate_shouldHandleMarkdownFencedResponse`
+  Mock response with ` ```json ` fences.
+  Verify ValidationResult is parsed correctly.
 
-3. **`validate_shouldThrowPipelineException_onInvalidJson`**
-   - Mock `llmClient.chat()` to return `"not json"`
-   - Verify `PipelineException` is thrown with phase `"Phase3b"`
+- `validate_shouldUseDefaultsForMissingFields`
+  Mock response: `{"convergenceScore": 50}` (no shouldLoop, no reasoning)
+  Verify shouldLoop == true, reasoning == ""
 
-4. **`validate_shouldThrowPipelineException_onEmptyResponse`**
-   - Mock `llmClient.chat()` to return `""`
-   - Verify `PipelineException` is thrown with phase `"Phase3b"`
+- `validate_shouldThrowPipelineException_onNullDocs`
+  Verify PipelineException with phase "Phase3b"
 
-5. **`validate_shouldThrowPipelineException_onScoreOutOfRange`**
-   - Mock response with `convergenceScore: 150`
-   - Verify `PipelineException` is thrown with message containing "must be 0-100"
+- `validate_shouldThrowPipelineException_onNullCritique`
+  Verify PipelineException with phase "Phase3b"
 
-6. **`validate_shouldIncludeLoopCountInPrompt`**
-   - Use `ArgumentCaptor<String>` to capture `userMessage`
-   - Verify it contains `"=== LOOP COUNT: 2 ==="` (or whatever loopCount is)
+- `validate_shouldThrowPipelineException_onNegativeLoopCount`
+  Pass loopCount = -1.
+  Verify PipelineException with phase "Phase3b"
 
-7. **`validate_shouldIncludeAllDocumentsInPrompt`**
-   - Verify `userMessage` contains contextDocument, flowDocument, and taskDocument
+- `validate_shouldThrowPipelineException_onEmptyLlmResponse`
+  Mock `llmClient.chat()` to return `""`
+  Verify PipelineException with phase "Phase3b"
 
-8. **`validate_shouldIncludeCritiqueResultsInPrompt`**
-   - Verify `userMessage` contains critique text and gap text
+- `validate_shouldThrowPipelineException_onInvalidJson`
+  Mock `llmClient.chat()` to return `"not json"`
+  Verify PipelineException with phase "Phase3b"
 
-9. **`validate_shouldHandleMarkdownFencedResponse`**
-   - Mock `llmClient.chat()` to return JSON wrapped in ```json fences
-   - Verify `JsonParser` strips fences and result is correctly parsed
+- `validate_shouldIncludeLoopCountInUserMessage`
+  Use ArgumentCaptor to capture userMessage.
+  Verify it contains `"iteration 2"` when loopCount == 2.
 
-10. **`validate_shouldHandleEmptyCritiqueLists`**
-    - Pass `CritiqueResult` with empty lists
-    - Verify userMessage contains `"(none)"` for empty sections
+- `validate_shouldFormatCritiqueItemsAsBulletLines`
+  Pass CritiqueResult with known critiques `["C1", "C2"]`, gaps `["G1"]`, refinementNeeds `[]`.
+  Use ArgumentCaptor to capture userMessage.
+  Verify userMessage contains:
+  - `"- C1\n- C2"` under `Critiques:`
+  - `"- G1"` under `Gaps:`
+  - `"- (none)"` under `Refinement needs:`
 
-11. **`validate_shouldThrowPipelineException_onLlmFailure`**
-    - Mock `llmClient.chat()` to throw `RuntimeException("LLM error")`
-    - Verify `PipelineException` is thrown with phase `"Phase3b"`
-
-12. **`validate_shouldNotUseDummyFormula`**
-    - This test verifies the orchestrator actually calls `llmClient.chat()`
-    - Use `verify(llmClient, times(1)).chat(anyString(), anyString())`
-    - If the verify fails, the dummy formula is still in use
+- `validate_shouldRenderNoneForNullOrEmptyLists`
+  Pass CritiqueResult with all three lists empty.
+  Use ArgumentCaptor.
+  Verify userMessage contains `"- (none)"` exactly 3 times.
 
 ---
 
 ## Acceptance criteria
-
 1. `mvn clean compile` → SUCCESS
-2. `mvn test` → 12 new tests pass (ValidationOrchestratorTest)
-3. Total tests ≥ 50 passing
-4. `validate()` has NO dummy formula — score from LLM only
-5. Score range (0-100) is validated after parsing
-6. `shouldLoop` decision comes from LLM, not hardcoded logic
-7. `loopCount` is included in the LLM prompt
-8. Null/empty LLM responses throw `PipelineException`
-9. `JsonParser` RuntimeException is wrapped in `PipelineException`
-10. All three documents and critique results appear in the prompt
-11. System prompt defined as `private static final String` constant
-12. The orchestrator does NOT enforce `maxLoops` (that's `IdeaPipeline`'s job)
+2. `mvn test` → 11 new tests pass (ValidationOrchestratorTest)
+3. `mvn test` → 51 total tests passing
+4. `validate()` has no `UnsupportedOperationException`
+5. Missing JSON fields use safe defaults (not null, not exception)
+6. This method does NOT enforce maxLoops
+7. `convergenceScore < threshold` triggers `log.warn()`
+8. Each critique list item appears as `"- item"` in the userMessage
+9. Null or empty list renders as `"- (none)"`
+10. `loopCount < 0` throws PipelineException
+11. System prompt defined as private static final constant
 
 ---
-
-## Files to modify
-
-1. **`src/main/java/com/ideapipeline/orchestrator/ValidationOrchestrator.java`**
-   - Inject `LlmClient` via constructor
-   - Replace dummy formula with LLM-based evaluation
-   - Add score range validation
-
-2. **`src/test/java/com/ideapipeline/orchestrator/ValidationOrchestratorTest.java`**
-   - Create new test file (or replace existing if one exists)
-   - 12 test methods as specified above
-
----
-
-## Success criteria
-
-After implementation:
-- ✅ Code compiles without warnings
-- ✅ All 12 tests pass
-- ✅ No dummy formula remains
-- ✅ LLM is actually called (verified by mock verification)
-- ✅ Proper exception handling throughout
-- ✅ Logging at appropriate levels
-
----
-
-End of phase-3b-validation.prompt.md v1.0

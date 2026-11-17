@@ -1,7 +1,7 @@
 # CONTEXT.md — idea-pipeline
 
-**Versión:** 1.1
-**Última actualización:** 2026-04-10
+**Versión:** 1.3
+**Última actualización:** 2026-04-19
 **Basado en:** diseño convergido manualmente (score 91)
 
 ## 1. Qué es
@@ -52,18 +52,22 @@ La fase ejecutiva corre una sola vez sobre documentos ya convergidos.
 ## 6. Stack técnico
 
 - Java 21
-- Spring Boot 3.3+
-- Spring AI 0.8.1 (OpenAI provider — gpt-4o-mini)
-- Virtual threads + StructuredTaskScope (Java 21 structured concurrency)
+- Spring Boot 4.1
+- Spring AI (OpenAI provider — gpt-4o-mini)
+- Spring Data JPA + H2 (job tracking)
 - Maven
 - Lombok
 
 ## 7. Decisiones de diseño clave
 
-**Virtual threads sobre CompletableFuture**
+**Implementación secuencial (v1)**
+IdeaPipeline ejecuta todas las fases secuencialmente. Es la base funcional
+correcta y suficiente para la prueba de concepto.
+
+**Virtual threads sobre CompletableFuture (pendiente — v2)**
 El pipeline es I/O-bound. Virtual threads con StructuredTaskScope
 son más limpios, más legibles y el fallo de un subtask cancela los demás
-automáticamente con ShutdownOnFailure.
+automáticamente con ShutdownOnFailure. No implementado en v1 por simplicidad.
 
 **Stack definido ANTES de Planning Poker**
 Sin stack definido, las estimaciones de tareas son vagas.
@@ -89,19 +93,28 @@ Un Scrum Master LLM simula al equipo completo.
 Evita 100+ llamadas por ejecución manteniendo el valor
 de las estimaciones contextualizadas.
 
+**REST API con job tracking async**
+POST /pipeline/run devuelve 202 inmediatamente con un jobId.
+El pipeline se ejecuta en background con `@Async`.
+El cliente hace polling de /pipeline/{id}/status y /pipeline/{id}/result.
+Esto permite integraciones web sin bloquear el hilo del request.
+
 ## 8. Estructura de paquetes
 
 ```
 com.ideapipeline
+├── cli/
+├── client/
 ├── config/
 ├── controller/
 │   └── dto/
+├── exception/
 ├── model/
 │   └── enums/
-├── client/
 ├── orchestrator/
+├── parser/
 ├── pipeline/
-└── exception/
+└── repository/
 ```
 
 ## 9. Archivos de contexto del proyecto
@@ -116,7 +129,14 @@ com.ideapipeline
 
 ## 10. Estado actual
 
-Prueba de concepto manual completada.
-Diseño convergido con score 93 (ValidationAgent — ChatGPT).
-Engineer Lead prompt v1.1 aprobado con score 91.
-Siguiente paso: generación del skeleton del proyecto.
+Implementación completada — 124 tests passing, 0 failures.
+Todos los orchestrators implementados y convergidos.
+IdeaPipeline orquestador principal implementado.
+CLI (PipelineRunner) implementado y testeado.
+REST API implementada con job tracking async:
+- POST /pipeline/questions — Gatekeeper Phase 0
+- POST /pipeline/run — Async job submission (202)
+- GET /pipeline/{id}/status — Job status polling
+- GET /pipeline/{id}/result — Job result retrieval
+- GET /pipeline/health — Health check
+Siguiente paso: virtual threads v2, deploy.

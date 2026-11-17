@@ -1,7 +1,7 @@
 # META_PIPELINE.md — Pipeline de Debate y Convergencia entre LLMs
 
-**Versión:** 1.5
-**Última actualización:** 2026-05-25
+**Versión:** 1.4
+**Última actualización:** 2026-04-19
 **Basado en:** diseño convergido manualmente (score 93) y Engineer Lead prompt v1.1
 
 ---
@@ -41,7 +41,6 @@ Este archivo es la **fuente de verdad** para el sistema multi‑agente. Define:
 | 3b | Validation + Convergence | Generativo | Los 3 docs + `CritiqueResult` + `loopCount` | `ValidationResult` (convergenceScore, shouldLoop, reasoning) | `convergenceScore >= 75` o máximo 3 loops |
 | 3.5 | Stack Architecture | Generativo | `IdeaContext` + 3 docs + historial | `ArchitectureDoc` | Documento generado |
 | 4 | Planning Poker | Ejecutivo | `tasks.md` + `ArchitectureDoc` + `Team` | `TaskGraph` | Todas las tareas estimadas y grafo generado |
-| — | **MVP completo** | — | — | — | Las 7 fases implementadas con LLM real, 87 tests |
 
 ---
 
@@ -73,6 +72,20 @@ Este archivo es la **fuente de verdad** para el sistema multi‑agente. Define:
 - `Task(String id, String title, String description, String epicId, String userStory)`
 - `EstimatedTask(Task task, int storyPoints, Map<String, Integer> votes, List<String> dependencies)`
 - `TaskGraph(List<EstimatedTask> tasks, Map<String, List<String>> adjacency, int totalPoints, Map<String, Integer> pointsByRole)`
+
+### Job tracking domain
+- `PipelineJobStatus` enum: QUEUED, PROCESSING, DONE, ERROR
+- `PipelineJob` entity: id (UUID), status, createdAt, updatedAt, errorMessage, resultJson
+- `PipelineJobRepository` extends `JpaRepository<PipelineJob, String>`
+
+### REST API layer
+- `PipelineController` — `/pipeline` endpoints
+- `PipelineJobService` — async job execution with `@Async`
+- DTOs: `QuestionsRequest`, `QuestionsResponse`, `RunPipelineRequest`, `RunPipelineResponse`, `JobStatusResponse`, `JobResultResponse`
+
+### CLI layer
+- `PipelineRunner` — `ApplicationRunner` with `--idea`, `--team`, `--interactive`, `--refinements`, `--output` flags
+- `TaskParser` — static parser for task markdown documents
 
 ### Pipeline state & result
 - `PipelineState(IdeaContext context, List<DebateMessage> debateHistory, PipelineOutput output, int loopCount)`
@@ -122,9 +135,9 @@ OUTPUT_FORMAT:
 | **Orquestador / PO** | Humano | Tiene la idea, decide qué avanza, copia contexto, evalúa outputs, da el go/no‑go. |
 | **Architect + Gatekeeper** | Claude | Diseño de arquitectura, generación de prompts, refinamiento con preguntas. |
 | **CriticAgent (Fase 3a)** | DeepSeek | Revisa prompts, documentos y decisiones buscando huecos, problemas y riesgos. |
-| **ValidationAgent (Fase 3b)** | Ollama (qwen3.5:4b) | Toma el output del crítico + los documentos y da el veredicto de convergencia. |
+| **ValidationAgent (Fase 3b)** | ChatGPT | Toma el output del crítico + los documentos y da el veredicto de convergencia. |
 
-> En producción, todos los roles son interpretados por Ollama (qwen3.5:4b) con distintos system prompts. El diseño original usó Claude/ChatGPT/DeepSeek en pruebas manuales; esas referencias se preservan como guía conceptual del perfil ideal por rol.
+> En las fases 1 y 2, los roles de ProductAgent, ArchitectAgent y CriticAgent son interpretados por los mismos LLMs según el system prompt. En la fase 4, el Scrum Master LLM puede ser cualquiera (recomendado: Claude).
 
 ---
 
@@ -170,7 +183,8 @@ OUTPUT_FORMAT:
 
 ## 10. Decisiones de diseño clave
 
-- **Virtual threads + StructuredTaskScope** sobre CompletableFuture: más limpio, manejo de fallos automático con `ShutdownOnFailure`.
+- **Implementación secuencial (v1)**: IdeaPipeline ejecuta fases en orden. Base funcional para la prueba de concepto.
+- **Virtual threads + StructuredTaskScope (pendiente — v2)**: más limpio, manejo de fallos automático con `ShutdownOnFailure`. No implementado en v1.
 - **Stack definido antes de Planning Poker**: evita estimaciones vagas.
 - **Dos firmas en `LlmClient`**: `chat()` para fases sin historial, `chatWithHistory()` para debate.
 - **Separación de Critique y Validation**: roles y modelos distintos (DeepSeek critica, ChatGPT valida).
@@ -179,28 +193,22 @@ OUTPUT_FORMAT:
 
 ---
 
-## 11. Estado de implementación (2026-05-25)
+## 11. Estado de implementación
 
-### Documentación base
-- ✅ `META_PIPELINE.md` (v1.5) — generado y corregido.
-- ✅ `idea.md` — generada y aprobada (score 96).
-- ✅ `CONTEXT.md` — generado y aprobado.
-- ✅ `AGENTS.md` — generado y aprobado.
-- ✅ Prompts de todas las fases (0, 1, 2, 3a, 3b, 3.5, 4) — creados.
-- ✅ `ADR-001-llm-provider.md` — decisión de proveedor LLM documentada.
-
-### Orquestadores implementados
-- ✅ Fase 0 — `GatekeeperOrchestrator` (8 tests)
-- ✅ Fase 1 — `DebateOrchestrator` (7 tests)
-- ✅ Fase 2 — `SynthesisOrchestrator` (8 tests)
-- ✅ Fase 3a — `CriticOrchestrator` (10 tests)
-- ✅ Fase 3b — `ValidationOrchestrator` (12 tests)
-- ✅ Fase 3.5 — `StackArchitectOrchestrator` (11 tests)
-- ✅ Fase 4 — `PlanningPokerOrchestrator` (14 tests)
-- ✅ Controller — `PipelineControllerTest` (8 tests)
-- ✅ Integración — `IdeaPipelineIntegrationTest` (3 tests)
-
-### Total tests: 87/87 pasando ✅ — MVP completo
+- ✅ `META_PIPELINE.md` (v1.4) — actualizado.
+- ✅ `idea.md` — aprobada (score 96).
+- ✅ `CONTEXT.md` (v1.3) — actualizado.
+- ✅ `AGENTS.md` (v1.2) — actualizado.
+- ✅ Todos los orchestrators — implementados, 85 tests passing.
+- ✅ `IdeaPipeline.java` — implementado, 96 tests passing.
+- ✅ `PipelineRunner` (CLI) — implementado, 106 tests total.
+- ✅ REST API — implementado, 129 tests total.
+  - `PipelineJob` entity + repository
+  - `PipelineJobService` (async execution)
+  - `PipelineController` (5 endpoints)
+  - DTOs (6 records)
+- ✅ `@EnableAsync` en `PipelineConfig`
+- ⏳ Virtual threads + StructuredTaskScope — pendiente (v2).
 
 ---
 

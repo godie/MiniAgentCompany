@@ -1,8 +1,8 @@
-# META_PIPELINE.md — LLM Debate and Convergence Pipeline
+# META_PIPELINE.md — Debate and Convergence Pipeline between LLMs
 
-**Version:** 1.5
-**Last update:** 2026-05-25
-**Based on:** design converged manually (score 93) and Engineer Lead prompt v1.1
+**Version:** 1.4
+**Last updated:** 2026-04-19
+**Based on:** manually converged design (score 93) and Engineer Lead prompt v1.1
 
 ---
 
@@ -26,7 +26,7 @@ This file is the **source of truth** for the multi-agent system. It defines:
 | **Executive** | 4 | Generate concrete tasks, estimates and assignments for coding agents. | High (team simulation, planning poker). | Runs once, on already converged documents. |
 
 **Golden rule:**
-> You do not jump from phase 3.5 to 4 while `convergenceScore` < 75 or the maximum number of loops has not been exhausted.
+> Do not jump from phase 3.5 to 4 while `convergenceScore` < 75 or the maximum number of loops has not been exhausted.
 
 ---
 
@@ -41,7 +41,6 @@ This file is the **source of truth** for the multi-agent system. It defines:
 | 3b | Validation + Convergence | Generative | The 3 docs + `CritiqueResult` + `loopCount` | `ValidationResult` (convergenceScore, shouldLoop, reasoning) | `convergenceScore >= 75` or max 3 loops |
 | 3.5 | Stack Architecture | Generative | `IdeaContext` + 3 docs + history | `ArchitectureDoc` | Document generated |
 | 4 | Planning Poker | Executive | `tasks.md` + `ArchitectureDoc` + `Team` | `TaskGraph` | All tasks estimated and graph generated |
-| — | **Complete MVP** | — | — | — | The 7 phases implemented with real LLM, 87 tests |
 
 ---
 
@@ -74,6 +73,20 @@ This file is the **source of truth** for the multi-agent system. It defines:
 - `EstimatedTask(Task task, int storyPoints, Map<String, Integer> votes, List<String> dependencies)`
 - `TaskGraph(List<EstimatedTask> tasks, Map<String, List<String>> adjacency, int totalPoints, Map<String, Integer> pointsByRole)`
 
+### Job tracking domain
+- `PipelineJobStatus` enum: QUEUED, PROCESSING, DONE, ERROR
+- `PipelineJob` entity: id (UUID), status, createdAt, updatedAt, errorMessage, resultJson
+- `PipelineJobRepository` extends `JpaRepository<PipelineJob, String>`
+
+### REST API layer
+- `PipelineController` — `/pipeline` endpoints
+- `PipelineJobService` — async job execution with `@Async`
+- DTOs: `QuestionsRequest`, `QuestionsResponse`, `RunPipelineRequest`, `RunPipelineResponse`, `JobStatusResponse`, `JobResultResponse`
+
+### CLI layer
+- `PipelineRunner` — `ApplicationRunner` with `--idea`, `--team`, `--interactive`, `--refinements`, `--output` flags
+- `TaskParser` — static parser for task markdown documents
+
 ### Pipeline state & result
 - `PipelineState(IdeaContext context, List<DebateMessage> debateHistory, PipelineOutput output, int loopCount)`
 - `PipelineResult(IdeaContext context, PipelineOutput documents, ArchitectureDoc architecture, TaskGraph taskGraph, int loopsRequired)`
@@ -86,45 +99,45 @@ All communication between phases must follow this template:
 
 ```
 ---
-PHASE: [número y nombre]
-AGENT: [rol del agente que recibe]
-FROM: [rol del agente que envía]
+PHASE: [number and name]
+AGENT: [role of the receiving agent]
+FROM: [role of the sending agent]
 ---
 
 SUMMARY:
-[2-5 líneas máximo — qué se decidió/generó en la fase anterior]
+[2-5 lines max — what was decided/generated in the previous phase]
 
 CONTEXT_FILES:
-[lista de archivos de referencia, no se repite su contenido]
+[list of reference files, their content is not repeated]
 
 INPUT:
-[el dato concreto que necesita este agente para trabajar]
+[the concrete data this agent needs to work]
 
 TASK:
-[instrucción clara y única — qué debe producir]
+[clear, single instruction — what it must produce]
 
 OUTPUT_FORMAT:
-[formato exacto esperado: JSON / Markdown / record]
+[exact expected format: JSON / Markdown / record]
 ---
 ```
 
 **Additional rules:**
 - The files listed in `CONTEXT_FILES` must be available locally.
-- If `INPUT` is too long, truncate with a summary and the note `[TRUNCATED – see historial.txt file]`.
+- If `INPUT` is too long, truncate with a summary and the note `[TRUNCATED – see history file.txt]`.
 - For long documents, use tags such as `<!-- CONTEXT_DOC --> ... <!-- END_CONTEXT_DOC -->`.
 
 ---
 
 ## 6. Roles in execution (manual test)
 
-| Role | LLM agent | Responsibility |
+| Role | LLM Agent | Responsibility |
 |-----|------------|-----------------|
-| **Orchestrator / PO** | Human | Has the idea, decides what moves forward, copies context, evaluates outputs, gives the go/no‑go. |
+| **Orchestrator / PO** | Human | Holds the idea, decides what advances, copies context, evaluates outputs, gives the go/no‑go. |
 | **Architect + Gatekeeper** | Claude | Architecture design, prompt generation, refinement with questions. |
 | **CriticAgent (Phase 3a)** | DeepSeek | Reviews prompts, documents and decisions looking for gaps, problems and risks. |
-| **ValidationAgent (Phase 3b)** | Ollama (qwen3.5:4b) | Takes the critic's output + the documents and gives the convergence verdict. |
+| **ValidationAgent (Phase 3b)** | ChatGPT | Takes the critic's output + the documents and gives the convergence verdict. |
 
-> In production, all roles are played by Ollama (qwen3.5:4b) with different system prompts. The original design used Claude/ChatGPT/DeepSeek in manual tests; those references are preserved as a conceptual guide to the ideal profile per role.
+> In phases 1 and 2, the ProductAgent, ArchitectAgent and CriticAgent roles are played by the same LLMs according to the system prompt. In phase 4, the Scrum Master LLM can be any (recommended: Claude).
 
 ---
 
@@ -136,9 +149,9 @@ OUTPUT_FORMAT:
 **Maximum loops in phase 3b:** 3. If after 3 loops the score is still <75, the pipeline stops and reports "forced convergence".
 
 **`convergenceScore` formula (guideline):**
-- 0–40: mandatory loop (major inconsistencies)
-- 41–74: recommended loop (significant gaps)
-- 75–100: advance (documents sufficiently coherent)
+- 0–40: loop mandatory (major inconsistencies)
+- 41–74: loop recommended (significant gaps)
+- 75–100: advance (sufficiently coherent documents)
 
 ---
 
@@ -160,8 +173,8 @@ OUTPUT_FORMAT:
 2. **Phase 0** – Copies `idea.md` to Claude with the Gatekeeper prompt. Claude returns questions. The Orchestrator answers.
 3. **Phase 1** – The Orchestrator sends the enriched `IdeaContext` and the history to the three LLMs in parallel, using the canonical format. Collects responses, consolidates and repeats rounds.
 4. **Phase 2** – Sends the complete history to a SynthesisAgent (Claude or ChatGPT) to generate the 3 docs.
-5. **Phase 3a** – Passes the 3 docs to DeepSeek (CriticAgent) to obtain the `CritiqueResult`.
-6. **Phase 3b** – Passes the 3 docs + `CritiqueResult` to ChatGPT (ValidationAgent) to obtain the `ValidationResult` and loop decision.
+5. **Phase 3a** – Passes the 3 docs to DeepSeek (CriticAgent) to obtain `CritiqueResult`.
+6. **Phase 3b** – Passes the 3 docs + `CritiqueResult` to ChatGPT (ValidationAgent) to obtain `ValidationResult` and the loop decision.
 7. **If loop** – Enriches `IdeaContext` with the `gaps` and `refinementNeeds` and returns to Phase 1.
 8. **If converged** – Advances to Phase 3.5 (Stack Architecture with Claude).
 9. **Phase 4** – Configures the team (`team.json` file) and runs Planning Poker with a Scrum Master LLM on `tasks.md`.
@@ -170,37 +183,32 @@ OUTPUT_FORMAT:
 
 ## 10. Key design decisions
 
-- **Virtual threads + StructuredTaskScope** over CompletableFuture: cleaner, automatic failure handling with `ShutdownOnFailure`.
+- **Sequential implementation (v1)**: IdeaPipeline runs phases in order. Functional base for the proof of concept.
+- **Virtual threads + StructuredTaskScope (pending — v2)**: cleaner, automatic failure handling with `ShutdownOnFailure`. Not implemented in v1.
 - **Stack defined before Planning Poker**: avoids vague estimates.
 - **Two signatures in `LlmClient`**: `chat()` for phases without history, `chatWithHistory()` for debate.
-- **Separation of Critique and Validation**: different roles and models (DeepSeek critiques, ChatGPT validates).
+- **Critique and Validation separation**: different roles and models (DeepSeek critiques, ChatGPT validates).
 - **Simplified Planning Poker**: a single Scrum Master LLM simulates the whole team; avoids hundreds of calls.
 - **Canonical exchange format**: ensures reproducibility in the manual test.
 
 ---
 
-## 11. Implementation status (2026-05-25)
+## 11. Implementation status
 
-### Base documentation
-- ✅ `META_PIPELINE.md` (v1.5) — generated and corrected.
-- ✅ `idea.md` — generated and approved (score 96).
-- ✅ `CONTEXT.md` — generated and approved.
-- ✅ `AGENTS.md` — generated and approved.
-- ✅ Prompts for all phases (0, 1, 2, 3a, 3b, 3.5, 4) — created.
-- ✅ `ADR-001-llm-provider.md` — LLM provider decision documented.
-
-### Implemented orchestrators
-- ✅ Phase 0 — `GatekeeperOrchestrator` (8 tests)
-- ✅ Phase 1 — `DebateOrchestrator` (7 tests)
-- ✅ Phase 2 — `SynthesisOrchestrator` (8 tests)
-- ✅ Phase 3a — `CriticOrchestrator` (10 tests)
-- ✅ Phase 3b — `ValidationOrchestrator` (12 tests)
-- ✅ Phase 3.5 — `StackArchitectOrchestrator` (11 tests)
-- ✅ Phase 4 — `PlanningPokerOrchestrator` (14 tests)
-- ✅ Controller — `PipelineControllerTest` (8 tests)
-- ✅ Integration — `IdeaPipelineIntegrationTest` (3 tests)
-
-### Total tests: 87/87 passing ✅ — complete MVP
+- ✅ `META_PIPELINE.md` (v1.4) — updated.
+- ✅ `idea.md` — approved (score 96).
+- ✅ `CONTEXT.md` (v1.3) — updated.
+- ✅ `AGENTS.md` (v1.2) — updated.
+- ✅ All orchestrators — implemented, 85 tests passing.
+- ✅ `IdeaPipeline.java` — implemented, 96 tests passing.
+- ✅ `PipelineRunner` (CLI) — implemented, 106 tests total.
+- ✅ REST API — implemented, 129 tests total.
+  - `PipelineJob` entity + repository
+  - `PipelineJobService` (async execution)
+  - `PipelineController` (5 endpoints)
+  - DTOs (6 records)
+- ✅ `@EnableAsync` in `PipelineConfig`
+- ⏳ Virtual threads + StructuredTaskScope — pending (v2).
 
 ---
 
